@@ -21,9 +21,9 @@
 |---|---|---|---|
 | **Head 펌웨어** (펌웨어 저장소) | UWB 거리 + ESP-NOW IMU → 1초 바이너리 묶음을 HTTPS POST. 확인 못 받은 묶음은 PSRAM 버퍼(4 MB ≈ 14분)에서 다시 보냄 | G1 | 끊긴 동안 데이터는 Head에만 있으므로 손실을 막는 것은 전송 방식이 아니라 버퍼와 "확인 뒤 삭제" |
 | **proxy** (Caddy) | 443 TLS → `/d/*`는 intake, 나머지는 api | — | 외부 포트가 HTTPS 하나라 Caddy로 충분 |
-| **intake** | 묶음 → CRC·중복 검사 → raw 파일 이어 쓰기 + `intake.chunk` 행 → 확인 응답 | G1 | 전송 처리만. 구간·Tag·착용자를 모름. 전송 수단이 바뀌어도 뒤가 안 바뀜 |
+| **intake** | 바이너리 묶음 → 전체 해독·필드 범위·CRC·중복 검사 → raw 파일 이어 쓰기 + `intake.chunk`(와 상태 블록) 행 → 바이너리 확인 응답 | G1 | 전송 처리만. 구간·Tag·착용자를 모름. 전송 수단이 바뀌어도 뒤가 안 바뀜 |
 | **core** | `intake.chunk` → 구간(segment) → gaitfusion 호출(analysis) → 일별 집계(summary), 걷기 원본 보관과 30일 지난 원본 삭제(archive) | G1, G2, G3, G4 | 비즈니스 규칙 전부가 여기. "60초 침묵이면 닫는다"는 메시지가 안 올 때 발동해야 하므로 수신기와 분리 |
-| **gaitfusion** (별도 저장소, 상태 없는 HTTP) | 구간 바이트 + 문맥 → 보폭·회전·10초 창·삽화·궤적 JSON | G2 | 원본을 보는 유일한 분석 단계. 원본이 필요한 지표(동결 검출, 창 단위 신호 질)를 전부 여기서 내서 뒤 단계가 원본을 안 보게 함([gait-features.md](../gaitfusion/gait-features.md)) |
+| **gaitfusion** (별도 저장소, 상태 없는 HTTP) | 구간 바이트 + 문맥 → 보폭·회전·10초 창·삽화 JSON + 궤적 바이너리(TRJ1) | G2 | 원본을 보는 유일한 분석 단계. 원본이 필요한 지표(동결 검출, 창 단위 신호 질)를 전부 여기서 내서 뒤 단계가 원본을 안 보게 함([gait-features.md](../gaitfusion/gait-features.md)) |
 | **C 선별 서비스** (나중) | 집계 → 지수·추세 | G3 | 특징 기반 모델. 바뀌는 주기가 달라 분리 |
 | **D LLM 해석** (나중) | 집계 + C 출력 + 불확실도 → 서술 | G3 | 해석 층. 분류기가 아니고 산술은 코드로 |
 | **api** (FastAPI) | DB → 앱 REST, 로그인, 장치 등록, 착용 기록 | G4 | 조회와 사람 입력(registry)만. 규칙 없음 |
@@ -84,9 +84,9 @@ core: intake ──▶ segment ──▶ analysis(gaitfusion C2) ──┬──
 |---|---|---|---|---|---|
 | **영구 원본** | 잃으면 되찾을 수 없음 | archive 파일, `archive.range`·`archive.cut` | 한 번 쓰고 수정 없음 | 10분마다 바깥 복사. 원격은 버전 보존, 삭제 금지 | 없음 |
 | | | `registry.*` (사람 입력) | api가 INSERT·UPDATE | DB 덤프 | 없음(토큰 폐기는 UPDATE) |
-| | | `intake.device_message` 중 `survey` | INSERT만 | DB 덤프 | 없음 |
-| **임시 원본** | 30일 동안 전체 재분석용 | raw 파일, `intake.chunk`, `intake.device_message` 중 `system`·`health` | 이어 쓰기·INSERT만 | raw는 10분마다 바깥 복사(원격 35일), 표는 DB 덤프 | 30일 + 삭제 조건(6절) |
-| **결과** | 원본에서 다시 계산 가능. 영구 | `segment.*`\*, `analysis.*`(궤적 제외), `summary.daily` | analysis는 INSERT만, segment는 열림·닫힘 UPDATE, summary는 다시 계산해 덮어씀 | DB 덤프 | 없음. 옛 run도 비교용으로 남김 |
+| | | `intake.survey` (묶음 안 survey 블록) | INSERT만 | DB 덤프 | 없음 |
+| **임시 원본** | 30일 동안 전체 재분석용 | raw 파일, `intake.chunk`, `intake.health`, `intake.system` | 이어 쓰기·INSERT만 | raw는 10분마다 바깥 복사(원격 35일), 표는 DB 덤프 | 30일 + 삭제 조건(6절) |
+| **결과** | 원본에서 다시 계산 가능. 영구 | `segment.*`\*, `analysis.*`(궤적 제외), `summary.*` | analysis는 INSERT만, segment는 열림·닫힘 UPDATE, summary는 다시 계산해 덮어씀 | DB 덤프 | 없음. 옛 run도 비교용으로 남김 |
 | **캐시** | 지워도 재분석으로 되살림 | 궤적 파일, `analysis.trajectory` | 새 run이 끝나면 옛 run 것 삭제 | 안 함 | 옛 run 것은 즉시. 디스크가 모자라면 오래된 것부터 |
 | **작업 기록** | 흐름을 돌리는 데만 씀 | `pipeline.*` | 자유 | DB 덤프에 함께 | `done` 작업은 30일 뒤 |
 
@@ -208,7 +208,7 @@ raw와 archive는 같은 형식입니다. 묶음마다 앞에 `u32 길이, i64 �
 ### 보존
 
 - 전체 원본(raw 파일과 `intake.chunk`)과 `system`·`health` 메시지: **30일**.
-- 걷기 원본(archive), 사람 입력(`registry`), `survey` 메시지, 구간·분석 결과·일별 요약: **영구**. 궤적은 캐시.
+- 걷기 원본(archive), 사람 입력(`registry`), survey 블록(`intake.survey`), 구간·분석 결과·일별 요약: **영구**. 궤적은 캐시.
 - 원본 삭제는 `archive.run.purge`(매일 1회) 한 곳에서만 합니다. 다른 코드는 원본을 지우지 않습니다.
 - 30일이 지나면 걷기로 판정되지 않았던 시간은 다시 볼 수 없습니다.
 
@@ -228,22 +228,23 @@ raw 파일 하나(수신 hour가 30일 전보다 이전)는 그 안의 모든 �
 3. 그 구간의 모든 run에 `archive.cut` 행이 있음.
 4. 그 구간의 `analysis`·`archive` 작업이 `queued`·`running`이 아님.
 
-하나라도 아니면 파일을 남기고 로그에 적습니다. 지우는 순서는 `intake.chunk` 행 → 파일입니다(중간에 멈추면 남은 파일은 다음 날 정리). 어느 구간에도 속하지 않은 묶음이 있는 파일은 지우지 않습니다(버그 신호). 분석에 실패한 구간(작업 `failed`)의 원본도 남습니다. 관리자가 재분석하거나 직접 지웁니다.
+하나라도 아니면 파일을 남기고 로그에 적습니다. 지우는 순서는 `intake.health`·`intake.system` 행 → `intake.chunk` 행 → 파일입니다(중간에 멈추면 남은 파일은 다음 날 정리). `intake.survey`는 지우지 않습니다. 어느 구간에도 속하지 않은 묶음이 있는 파일은 지우지 않습니다(버그 신호). 분석에 실패한 구간(작업 `failed`)의 원본도 남습니다. 관리자가 재분석하거나 직접 지웁니다.
 
 ### 구간 (`segment/rules.py`)
 
 한 장치에서 끊김 없이 이어진 원본. 분석 단위.
 - 시작: 열린 구간이 없는 장치의 묶음.
-- 닫힘(먼저 오는 것): 마지막 수신 뒤 60초 · `head_boot_id` 바뀜 · 첫 IMU 프레임의 `tag_mac`/`tag_boot_id` 바뀜 · `geometry_hash` 바뀜 · 1시간 도달.
+- 닫힘(먼저 오는 것): 마지막 수신 뒤 60초 · `head_boot_id` 바뀜 · 같은 발 자리(`tag_id`)의 `tag_mac`/`tag_boot_id` 바뀜 · `geometry_hash` 바뀜 · 1시간 도달.
+- Tag: 발 자리(`tag_id` 0 = 왼쪽, 1 = 오른쪽)마다 처음 보인 Tag를 `segment.segment_tag`에 한 행 넣습니다. 새 발 자리가 나타나면 구간을 닫지 않고 행을 더하고 `sides`를 고칩니다. 1-Tag 세트는 한 행입니다.
 - 다시 열기: 같은 부팅에서 `chunk_seq`가 이어지고 Head 시각 간격 60초 미만이면 닫힌 구간을 다시 열고, 다시 닫히면 재분석 등록.
 - 빈자리: `chunk_seq` 건너뜀 → `n_missing_chunks`. 머리 `dropped_*` 합 → `n_dropped_frames`.
 - 시각: flags bit0 켜진 묶음이 있으면 `time_source = server`, 아니면 `arrival`(수신 − 1초).
 
 ### 귀속 (`analysis.bout_subject` 뷰)
 
-bout 시작 시각에 `device_id`가 같고 (`tag_mac`이 NULL이거나 같고) 기간이 덮는 `wear`의 `subject_id`. 둘이면 `tag_mac` 명시 쪽, 그래도 둘이면 NULL + `ambiguous`.
+bout 시작 시각에 `device_id`가 같고 (`tag_mac`이 NULL이거나 그 구간의 Tag 중 하나이고) 기간이 덮는 `wear`의 `subject_id`. 둘이면 `tag_mac` 명시 쪽, 그래도 둘이면 NULL + `ambiguous`. 세트 하나(Tag 1–2개)는 한 번에 한 사람이 찹니다. 발은 Tag 번호가 정하므로 착용 기록에 없습니다.
 
-bout에는 주인 열이 없고 조회 때마다 이 뷰가 정합니다. 그래서 착용 기록을 고치면 바로 반영되고 결과 표를 고칠 일이 없습니다. `PATCH /v1/wear`는 `started_at`·`ended_at`·`paretic`만 바꿉니다. 착용자나 장치를 바꾸려면 끝내고 새로 만듭니다.
+bout에는 주인 열이 없고 조회 때마다 이 뷰가 정합니다. 그래서 착용 기록을 고치면 바로 반영되고 결과 표를 고칠 일이 없습니다. `PATCH /v1/wear`는 `started_at`·`ended_at`만 바꿉니다. 착용자나 장치를 바꾸려면 끝내고 새로 만듭니다. 마비측은 착용자의 속성(`subject.paretic_side`)입니다.
 
 ### 걷기 구간 집계 (`analysis/rules.py`)
 
@@ -289,7 +290,13 @@ bout에는 주인 열이 없고 조회 때마다 이 뷰가 정합니다. 그래
 
 ## 7. 계약 C1: Head → 서버
 
-[wire.md](../uwb-firmware/docs/wire.md)가 전부입니다. 서버가 기대는 요지: `POST /d/v1/chunks`(`u32 len + 묶음` 반복, 최대 16개·128 kB, 응답 `acked`/`rejected`/`server_utc_us`, 중복은 acked), `POST /d/v1/status`(`system`/`health`/`survey` JSON), 중복 제거 키 `(device_id, head_boot_id, chunk_seq)`, 보통 4.8 kB/s.
+[wire.md](../uwb-firmware/docs/wire.md)가 전부입니다. 서버가 기대는 요지:
+- 엔드포인트는 `POST /d/v1/chunks` 하나입니다. 본문은 `u32 len + 묶음`의 반복이고, 한 요청에 최대 16개·128 kB입니다.
+- 상태(system·health·survey)는 따로 보내지 않고 묶음 안의 고정 배치 바이너리 블록으로 옵니다. JSON은 이 경로에 없습니다.
+- 응답도 바이너리입니다. `server_utc_us`와 묶음마다 결과 코드 1 B를 담고, 중복은 저장된 것으로 답합니다.
+- 중복 제거 키는 `(device_id, head_boot_id, chunk_seq)`입니다.
+- 엄격하게 검사합니다. 프레임과 블록의 필드 하나라도 범위를 벗어나면 그 묶음 전체를 거절합니다.
+- 보통 4.8 kB/s입니다(2-Tag는 IMU가 두 배라 약 7 kB/s).
 
 ## 8. 계약 C2: 서버 → gaitfusion
 
@@ -306,47 +313,68 @@ gaitfusion 저장소가 소유합니다. 서버가 기대하는 모양입니다.
 {
   "segment_id": 1234,
   "anchors": [{"id": 0, "xyz_m": [0, 0, 1.2], "bias_m": 0.0}, "…"],
-  "subject": {"height_m": 1.72, "leg_length_m": 0.90, "side": "left", "paretic": null},
+  "subject": {"height_m": 1.72, "leg_length_m": 0.90, "paretic_side": null},
   "params": {"stance_threshold": null, "stance_window": null, "bout_min_strides": 4, "bout_max_pause_s": 3.0, "bout_pad_s": 2.0}
 }
 ```
 
-`anchors`가 null이면 IMU 단독 모드. `subject.side`(착용 발)와 `paretic`(마비측 여부)은 보폭 지표의 뜻을 바꾸므로 알면 넣습니다. `params`의 null은 서비스 기본값. 걷기 구간 기준은 **정지와 swing 교대 4보폭 이상, 멈춤 3초 미만, 앞뒤 2초 포함**입니다.
+`anchors`가 null이면 IMU 단독 모드. 발은 묶음 프레임의 `tag_id`로 서비스가 정합니다(0 = 왼쪽, 1 = 오른쪽). `paretic_side`(마비측)는 보폭 지표의 뜻을 바꾸므로 알면 넣습니다. `params`의 null은 서비스 기본값. 걷기 구간 기준은 **정지와 swing 교대 4보폭 이상, 멈춤 3초 미만, 앞뒤 2초 포함**입니다.
 
-### 응답 (200, JSON)
+### 응답 (200, `multipart/mixed`)
+
+응답은 파트 여럿입니다. 첫 파트 `result`(`application/json`)는 궤적을 뺀 결과 전부이고 1시간 구간에 약 1 MB입니다. 이어서 걷기 구간·발마다 궤적 파트 하나(`application/octet-stream`, 이름 `traj-<bout 순번>-<side>`, 아래 TRJ1)가 옵니다. 궤적이 응답 크기의 대부분(숫자를 글자로 쓰면 1시간 구간에 약 15 MB)이므로 JSON에 넣지 않고, core는 해석 없이 파일로 씁니다.
+
+`result` 파트:
 
 ```json
 {
   "gaitfusion_version": "1.3.0+gabc1234",
   "summary": {"n_imu": 359800, "n_range": 358100, "seq_gaps": 3, "clock_fit": {}, "windows": 2,
-              "side": "left", "sensor_site": "lateral_ankle", "method_versions": {"fog": "fi-1.0"}},
+              "sides": ["left"], "sensor_site": "lateral_ankle", "method_versions": {"fog": "fi-1.0"}},
   "bouts": [{
-    "start_s": 812.40, "end_s": 871.15, "mode": "fused", "quality": {"uwb_accept_ratio": 0.93},
-    "strides": [{"idx": 0, "start_s": 814.1, "end_s": 815.2, "duration_s": 1.1, "length_m": 1.31, "speed_mps": 1.19,
+    "start_s": 812.40, "end_s": 871.15, "mode": "fused", "sides": "left", "quality": {"uwb_accept_ratio": 0.93},
+    "strides": [{"side": "left", "idx": 0, "start_s": 814.1, "end_s": 815.2, "duration_s": 1.1, "length_m": 1.31, "speed_mps": 1.19,
                  "heading_deg": 87.2, "clearance_m": 0.052, "min_clearance_m": 0.018, "min_clearance_t_s": 0.61,
                  "stance_s": 0.66, "swing_s": 0.44, "stance_ratio": 0.60, "lateral_dev_m": 0.03,
                  "pitch_at_strike_deg": -12.1, "pitch_at_toeoff_deg": 38.4,
                  "swing_peak_gyro_dps": 310, "stance_min_gyro_dps": 4, "strike_peak_g": 6.2, "swing_peak_speed_mps": 3.9,
                  "uwb_support": 0.95, "turn_idx": null}],
     "turns":   [{"idx": 0, "start_s": 830.1, "end_s": 832.0, "angle_deg": 178, "peak_velocity_dps": 61, "mean_velocity_dps": 40, "n_strides": 3, "jerk": 0.8}],
-    "windows": [{"start_s": 812.4, "end_s": 822.4, "freeze_index": 0.9, "power_locomotor": 1.0, "power_freeze": 0.9,
+    "steps":   [],
+    "windows": [{"side": "left", "start_s": 812.4, "end_s": 822.4, "freeze_index": 0.9, "power_locomotor": 1.0, "power_freeze": 0.9,
                  "dominant_freq_hz": 1.8, "dominant_amp": 0.4, "stride_regularity": 0.81,
                  "harmonic_ratio_ap": 2.1, "harmonic_ratio_v": 2.4, "harmonic_ratio_ml": 1.6,
                  "local_dynamic_stability": 0.9, "sample_entropy": 0.3, "jerk_rms": 1.3,
                  "acc_rms_v": 0.4, "acc_rms_ap": 0.3, "acc_rms_ml": 0.2, "gyro_rms": 90,
                  "mean_speed_mps": 1.15, "n_strides": 9, "uwb_support": 0.95}],
-    "events":  [{"start_s": 840.2, "end_s": 843.9, "type": "fog", "score": 0.82, "method_version": "fi-1.0"}],
-    "trajectory": {"rate_hz": 100, "t0_s": 810.40, "n": 6275,
-                   "px": [], "py": [], "pz": [], "vx": [], "vy": [], "vz": [],
-                   "roll_deg": [], "pitch_deg": [], "yaw_deg": [], "stance": [], "sig_px": [], "sig_py": [], "sig_pz": []}
+    "events":  [{"side": null, "start_s": 840.2, "end_s": 843.9, "type": "fog", "score": 0.82, "method_version": "fi-1.0"}],
+    "trajectories": [{"side": "left", "part": "traj-0-left"}]
   }]
 }
 ```
 
+궤적 파트 TRJ1 (little-endian, 열 우선):
+
+| offset | 크기 | 형 | 이름 | 내용 |
+|---|---|---|---|---|
+| 0 | 4 | char × 4 | `magic` | `TRJ1` |
+| 4 | 1 | u8 | `side` | 0 왼쪽, 1 오른쪽 |
+| 5 | 1 | u8 | `n_channels` | 13 |
+| 6 | 2 | u16 | `rate_hz` | 100 |
+| 8 | 4 | u32 | `n` | 채널당 표본 수 |
+| 12 | 4 | u32 | `reserved` | 0 |
+| 16 | 8 | f64 | `t0_s` | 첫 표본 시각, 응답 시각축(보낸 첫 묶음 = 0)의 초 |
+| 24 | 4 × n × 13 | f32 | 채널 배열 | `px py pz vx vy vz roll_deg pitch_deg yaw_deg stance sig_px sig_py sig_pz` 순서로 채널마다 `n`개씩. `stance`는 0/1. 계산 못 한 표본은 NaN |
+| 24 + 52n | 4 | u32 | `crc32` | 앞 전체의 CRC-32(wire와 같은 다항식) |
+
+core는 `magic`·`n_channels`·길이(`28 + 52n`)·CRC만 확인하고 파일 `/data/trajectory/<run_id>/<bout_id>-<side>.trj`로 그대로 씁니다. api는 머리를 읽고, 채널마다 시작 위치 `24 + 4n·k`에서 `rate`에 맞게 건너뛰며 읽습니다(해석이나 압축 해제 없음). 걷기 1분이 약 0.3 MB입니다.
+
+- **Tag가 둘이면**(`sides` = `"both"`): `strides`·`windows`·`trajectories`에 두 발의 항목이 `side`로 섞여 오고, `steps`에 양발 걸음이 옵니다. 걸음 항목은 `{"idx", "side", "start_s", "end_s", "step_time_s", "step_length_m", "step_width_m", "double_support_s", "single_support_s", "uwb_support"}`이고 열의 뜻은 [server-schema.md](server-schema.md) `analysis.step`입니다. 한 발이면 `steps`는 빈 배열입니다. `events[].side`는 한 발 신호로 판정했으면 그 발, 양발을 함께 봤으면 `null`입니다.
+
 - 시각은 **보낸 첫 묶음의 `head_us_start`를 0으로 하는 초**. 서비스는 UTC를 모르고 core가 `analysis.run.origin_at`을 더합니다.
 - seq 빈자리는 표본 수가 아니라 묶음 머리의 `head_us_start`로 시간을 이어야 합니다. 30일 뒤 재분석에서는 빈자리가 수 분일 수 있습니다(gaitfusion 쪽 확인 필요).
 - 열의 정의와 근거는 [gait-features.md](../gaitfusion/gait-features.md) 3–6절. 수치가 계산 불가면 `null`(0이 아님).
-- 궤적은 100 Hz, 걷기 구간 앞뒤 2초 포함. 앱용 25 Hz는 api가 줄입니다. 응답은 JSON 하나(1시간 구간에 보행 절반이면 약 15 MB).
+- 궤적은 100 Hz, 걷기 구간 앞뒤 2초 포함. 앱용 25 Hz는 api가 TRJ1 파일에서 건너뛰며 읽어 줄입니다. 1시간 구간에 보행이 절반이면 `result` 약 1 MB + 궤적 파트 약 9 MB.
 - 보폭·회전·창·삽화는 전부 서비스가 계산합니다. core는 집계만 합니다.
 
 ### 오류
@@ -371,10 +399,11 @@ REST + JSON, 경로 `/v1/`. FastAPI가 OpenAPI를 만들고 앱 팀은 그것으
 | `GET /v1/me` | 내 계정과 착용자 | 로그인 | registry |
 | `GET /v1/subjects/{id}/daily?from=&to=` | 일별 요약 | 본인, admin | summary |
 | `GET /v1/subjects/{id}/bouts?from=&to=` | 걷기 구간 목록 | 본인, admin | analysis |
-| `GET /v1/bouts/{id}` | 걷기 구간 상세: 보폭, 회전, 삽화 | 본인, admin | analysis |
-| `GET /v1/bouts/{id}/trajectory?rate=25` | 궤적. `rate` 25(기본)·50·100. 캐시가 지워졌으면 404 | 본인, admin | analysis |
-| `GET /v1/devices` · `GET /v1/devices/{id}/health?from=&to=` | 장치 목록과 최신 상태 · 1분 기록(최근 30일) | 로그인 · 본인, admin | registry · intake |
-| `POST /v1/wear` · `PATCH /v1/wear/{id}` | 착용 시작·끝, 마비측 여부 | 본인, admin | registry |
+| `GET /v1/bouts/{id}` | 걷기 구간 상세: 발별 보폭, 양발 걸음(있으면), 회전, 삽화 | 본인, admin | analysis |
+| `GET /v1/bouts/{id}/trajectory?side=left&rate=25` | 한 발의 궤적. `side` 생략 = 있는 발 전부. `rate` 25(기본)·50·100. 캐시가 지워졌으면 404 | 본인, admin | analysis |
+| `GET /v1/devices` · `GET /v1/devices/{id}/health?from=&to=` | 장치 목록과 최신 상태 · 1분 기록(최근 30일, `intake.health` 블록을 wire 해독기로 풀어 줌) | 로그인 · 본인, admin | registry · intake |
+| `POST /v1/wear` · `PATCH /v1/wear/{id}` | 착용 시작·끝 | 본인, admin | registry |
+| `PATCH /v1/subjects/{id}` | 키, 다리 길이, 마비측(`paretic_side`) | admin | registry |
 | `POST /v1/devices` · `DELETE /v1/devices/{id}/token` | 장치 등록(토큰 한 번 표시) · 토큰 폐기·재발급 | admin | registry |
 | `GET /v1/segments?device=&from=&to=` · `POST /v1/segments/{id}/reanalyze` | 원본 구간과 빈자리 수 · 재분석 등록(30일 뒤에는 걷기 부분만) | admin | segment |
 
@@ -383,13 +412,15 @@ REST + JSON, 경로 `/v1/`. FastAPI가 OpenAPI를 만들고 앱 팀은 그것으
 DDL 전부는 [server-schema.md](server-schema.md)입니다. 관계만 적습니다.
 
 ```
-registry.device 1─n segment.segment 1─n analysis.run 1─n analysis.bout ─┬─ n stride (n─1 turn)
-                                                                        ├─ n turn
-                                                                        ├─ n bout_window
+registry.device 1─n segment.segment 1─n analysis.run 1─n analysis.bout ─┬─ n stride (발별, n─1 turn)
+                │                                                       ├─ n step   (양발 bout만)
+                └─ 1─2 segment.segment_tag (발 자리별 Tag)               ├─ n turn
+                                                                        ├─ n bout_window (발별)
                                                                         ├─ n gait_event
-                                                                        └─ 1 trajectory (파일 위치)
+                                                                        └─ 1–2 trajectory (발별 파일 위치)
 registry.subject 1─n registry.wear      bout의 주인 = analysis.bout_subject 뷰(조회 때 wear와 맞춤)
-registry.subject 1─n summary.daily
+registry.subject 1─n summary.daily 1─┬─ 0–2 summary.daily_side (발별)
+                                     └─ 0–1 summary.daily_bilateral (양발인 날만)
 segment.segment 1─n archive.range       걷기 원본 조각.  analysis.run 1─1 archive.cut
 intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이어짐. FK 없음(색인은 30일 뒤 사라짐)
 ```
@@ -407,9 +438,9 @@ intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이
 | Head 1대 | 4.8 kB/s, 초당 요청 1개. 버퍼 PSRAM 4 MB ≈ 14분 |
 | 전체 원본 (30일) | 시간당 17 MB, 24시간 착용 시 하루 0.41 GB. 3명 × 30일 = 37 GB (회전) |
 | 걷기 원본 (영구) | 걷기 하루 1.5시간, 앞뒤 여유를 더해 그 1.5배로 가정: 3명 연 43 GB. 걷기 하루 1시간이면 29 GB, 2시간이면 57 GB |
-| 궤적 캐시 | 보행 1시간에 약 15 MB(압축 전) 이하: 3명 연 25 GB 이하 |
+| 궤적 캐시 | TRJ1(f32, 압축 없음) 보행 1시간에 약 19 MB, 발이 둘이면 그 두 배: 1-Tag 3명·하루 1.5시간이면 연 31 GB |
 | 색인·결과 표 | `intake.chunk` 30일 1.4 GB, 분석 결과 연 1.5 GB |
-| 서버 디스크 | 1년 차 약 110 GB, 이후 연 70 GB 증가. 250 GB면 약 3년 |
+| 서버 디스크 | 1-Tag 기준 1년 차 약 116 GB, 이후 연 76 GB 증가. 250 GB면 약 2년 9개월. 2-Tag는 IMU와 궤적이 두 배라 더 빨리 참 |
 | 원격 저장 | raw 37 GB(고정) + 걷기 원본 연 43 GB + DB 덤프(14일 + 매월 1개) |
 | gaitfusion 메모리 | 10분 창 하나에 약 0.3 GB |
 | 권장 VM | 2 vCPU, 4 GB RAM, 디스크 250 GB |
@@ -429,7 +460,7 @@ intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이
 | 5 | 서버 | `archive`(걷기 원본 보관·30일 삭제)와 `ops/backup.sh`. 복구 연습 1회 |
 | 6 | gaitfusion | 저장소 분리(`analysis/gaitfusion`, `scripts/fuse.sh`, `scripts/setup-analysis.sh`, `tests/fusion/` 이동), `wire.py`, `service.py`, 보폭 추가 열·회전·창·삽화([gait-features.md](../gaitfusion/gait-features.md)), 10분 창 초기 상태 입력, 긴 seq 빈자리 처리, 이미지 |
 | 7 | 서버 | api(각 단계의 `routes.py`) |
-| 8 | 펌웨어 | Head 전송부: 묶음 인코더, PSRAM 링 버퍼, HTTPS, 재전송, UTC 추정, `status` 1분. 빌드 옵션 `PSRAM=opi,FlashSize=16M`. 런타임 설정에 서버 URL·토큰. `health`에 PSRAM과 버퍼 점유율 |
+| 8 | 펌웨어 | Head 전송부: 묶음 인코더(상태 블록 포함, JSON을 거치지 않고 내부 구조체에서 바로), PSRAM 링 버퍼, HTTPS, 재전송, UTC 추정, health 블록 1분. 빌드 옵션 `PSRAM=opi,FlashSize=16M`. 런타임 설정에 서버 URL·토큰. `health`에 PSRAM과 버퍼 점유율 |
 | 9 | 서버 | proxy와 원격 VM 배포 |
 
 측량용 3D 뷰어는 지금처럼 현장 노트북 broker(`../uwb-firmware/server/mosquitto.conf`)로 쓰고, 설치가 끝나면 Head 설정을 서버 URL로 바꿉니다.
