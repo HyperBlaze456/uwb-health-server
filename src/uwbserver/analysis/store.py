@@ -24,17 +24,16 @@ class SegmentView:
     installation_id: int | None
 
 
-def begin_snapshot(conn: psycopg.Connection) -> None:
-    """트랜잭션의 첫 문장. 구간과 묶음 목록을 같은 순간의 모습으로 읽게 합니다(AN-4)."""
-    conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
-
-
-def segment(conn: psycopg.Connection, segment_id: int) -> SegmentView | None:
+def lock_segment(conn: psycopg.Connection, segment_id: int) -> SegmentView | None:
+    """구간 행을 잠그고 읽습니다(AN-2, AN-4). 구간을 닫거나 묶음을 더하는 segment 트랜잭션과 차례를 정해,
+    "열려 있어 run 없이 끝냄"과 "닫히며 작업 넣기"가 엇갈려 작업 없이 닫힌 구간이 남지 않게 합니다.
+    잠금은 입력을 고르는 짧은 트랜잭션 동안만입니다(C2 호출 중에는 풀려 있음)."""
     row = conn.execute(
         """
         SELECT id, device_id, head_boot_id, state, sides, first_seq, last_seq, n_chunks, revision, utc_offset_us,
                installation_id
         FROM segment.segment WHERE id = %s
+        FOR UPDATE
         """,
         (segment_id,),
     ).fetchone()
@@ -66,15 +65,17 @@ def subject_of_segment(conn: psycopg.Connection, segment_id: int) -> dict | None
 def raw_chunks(conn: psycopg.Connection, seg: SegmentView) -> list[dict]:
     """구간의 묶음 행(seq 순). 위치와 Head 시각만.
 
-    프레임 없는 묶음(SG-2)은 seq가 구간 범위 안에 있어도 구간에 들지 않으므로 뺍니다.
+    - 프레임 없는 묶음(SG-2)은 seq가 구간 범위 안에 있어도 구간에 들지 않으므로 뺍니다.
+    - segment가 아직 처리하지 않은 묶음(id > 읽기 위치)도 뺍니다. 구간의 n_chunks에 아직 없기 때문입니다.
     """
     return conn.execute(
         """
-        SELECT chunk_seq, head_us_start, raw_path, raw_offset, raw_len
-        FROM intake.chunk
-        WHERE device_id = %s AND head_boot_id = %s AND chunk_seq BETWEEN %s AND %s
-          AND (n_range > 0 OR n_imu_frames > 0)
-        ORDER BY chunk_seq
+        SELECT c.chunk_seq, c.head_us_start, c.raw_path, c.raw_offset, c.raw_len
+        FROM intake.chunk c, pipeline.cursor k
+        WHERE c.device_id = %s AND c.head_boot_id = %s AND c.chunk_seq BETWEEN %s AND %s
+          AND (c.n_range > 0 OR c.n_imu_frames > 0)
+          AND k.name = 'chunk' AND c.id <= k.last_id
+        ORDER BY c.chunk_seq
         """,
         (seg.device_id, seg.head_boot_id, seg.first_seq, seg.last_seq),
     ).fetchall()

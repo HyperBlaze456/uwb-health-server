@@ -78,8 +78,7 @@ def handle(
     """
     now = clock.now()
     with conn.transaction():
-        store.begin_snapshot(conn)
-        seg = store.segment(conn, job.segment_id)
+        seg = store.lock_segment(conn, job.segment_id)
         if seg is None:
             jobs.fail(conn, job.id, "no_segment", now=now)
             return "no_segment"

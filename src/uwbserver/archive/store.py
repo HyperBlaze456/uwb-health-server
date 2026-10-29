@@ -114,7 +114,14 @@ def segment_states(conn: psycopg.Connection, segment_ids: list[int]) -> dict[int
                         WHERE j.kind = 'archive' AND r.segment_id = s.id
                           AND j.state IN ('queued','running')) AS archive_pending,
                (SELECT j.state FROM pipeline.job j WHERE j.kind = 'analysis' AND j.segment_id = s.id
-                 ORDER BY j.id DESC LIMIT 1) AS last_analysis_state
+                 ORDER BY j.id DESC LIMIT 1) AS last_analysis_state,
+               coalesce((SELECT r.segment_revision <> s.revision FROM analysis.run r WHERE r.segment_id = s.id
+                          ORDER BY r.id DESC LIMIT 1), false) AS run_stale,
+               EXISTS (SELECT 1 FROM archive.range a
+                        WHERE a.segment_id = s.id
+                          AND a.n_chunks < (SELECT count(*) FROM intake.chunk c
+                                             WHERE c.device_id = a.device_id AND c.head_boot_id = a.head_boot_id
+                                               AND c.chunk_seq BETWEEN a.first_seq AND a.last_seq)) AS archive_incomplete
         FROM segment.segment s
         WHERE s.id = ANY(%s)
         """,
@@ -175,3 +182,29 @@ def count_rejected_for_path(conn: psycopg.Connection, path: str) -> int:
 
 def delete_rejected_for_path(conn: psycopg.Connection, path: str) -> int:
     return conn.execute("DELETE FROM intake.rejected WHERE path = %s", (path,)).rowcount
+
+
+def keys_without_row(conn: psycopg.Connection, device_id: str, keys: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """파일의 레코드 키 중 intake.chunk 행이 아예 없는 것(AR-6: 파일 안의 모든 묶음을 봄)."""
+    if not keys:
+        return []
+    rows = conn.execute(
+        """
+        SELECT k.boot, k.seq FROM unnest(%s::bigint[], %s::bigint[]) AS k(boot, seq)
+        WHERE NOT EXISTS (SELECT 1 FROM intake.chunk c
+                          WHERE c.device_id = %s AND c.head_boot_id = k.boot AND c.chunk_seq = k.seq)
+        """,
+        ([k[0] for k in keys], [k[1] for k in keys], device_id),
+    ).fetchall()
+    return [(r["boot"], r["seq"]) for r in rows]
+
+
+def purged_exists(conn: psycopg.Connection, raw_path: str) -> bool:
+    return conn.execute("SELECT 1 FROM archive.purged WHERE path = %s", (raw_path,)).fetchone() is not None
+
+
+def insert_purged(conn: psycopg.Connection, raw_path: str, n_records: int, n_chunks: int, now: datetime) -> None:
+    conn.execute(
+        "INSERT INTO archive.purged (path, n_records, n_chunks, deleted_at) VALUES (%s, %s, %s, %s)",
+        (raw_path, n_records, n_chunks, now),
+    )

@@ -95,6 +95,28 @@ def test_purge_deletes_settled_file(env, device):
         assert env.scalar(f"SELECT count(*) FROM {t}") == 0
     assert env.scalar("SELECT count(*) FROM archive.range") > 0
     assert all(files.exists(r["path"]) for r in env.q("SELECT path FROM archive.range"))
+    # 무엇을 언제 지웠는지 남음
+    (row,) = env.q("SELECT path, n_records, n_chunks FROM archive.purged")
+    assert row["n_chunks"] == n_chunks and row["n_records"] == n_chunks
+
+
+def test_purge_interrupted_after_rows_finishes_next_day(env, device, monkeypatch):
+    """행을 지운 뒤 파일을 지우기 전에 멈추면, 다음 날 archive.purged를 보고 파일을 마저 지움.
+    (행이 없는 레코드지만 "잃은 행"과 구별됨)"""
+    _analyze_and_archive(env, device)
+    env.clock.advance(31 * 86400)
+
+    def boom(path):
+        raise OSError("멈춤")
+
+    monkeypatch.setattr(files, "delete", boom)
+    with pytest.raises(OSError):
+        _purge(env, True)
+    monkeypatch.undo()
+    assert _raw_files(env) and env.scalar("SELECT count(*) FROM intake.chunk") == 0
+    env.clock.advance(86400)
+    stats = _purge(env, True)
+    assert stats.raw_files_deleted == 1 and _raw_files(env) == []
 
 
 BREAKS = {
@@ -107,6 +129,13 @@ BREAKS = {
     "analysis_failed": "INSERT INTO pipeline.job (kind, segment_id, state) SELECT 'analysis', id, 'failed' FROM segment.segment",
     "not_segmented": "UPDATE pipeline.cursor SET last_id = 0",
     "chunk_without_segment": "DELETE FROM segment.segment_tag; UPDATE segment.segment SET first_seq = first_seq + 100000, last_seq = last_seq + 100000",
+    # SPEC AR-6에 더한 두 조건(원본을 잃지 않는 쪽)
+    "run_stale": "UPDATE segment.segment SET revision = revision + 1",
+    "archive_incomplete": "UPDATE archive.range SET n_chunks = n_chunks - 1",
+    # 파일의 레코드인데 행이 없음(DB만 재시작해 잃은 받기 커밋)
+    "records_without_row": "DELETE FROM intake.health WHERE chunk_seq = (SELECT max(chunk_seq) FROM intake.chunk); "
+    "DELETE FROM intake.system WHERE chunk_seq = (SELECT max(chunk_seq) FROM intake.chunk); "
+    "DELETE FROM intake.chunk WHERE chunk_seq = (SELECT max(chunk_seq) FROM intake.chunk)",
 }
 
 
@@ -120,6 +149,7 @@ def test_purge_keeps_when_condition_broken(env, device, reason):
     stats = _purge(env, True)
     assert stats.raw_files_deleted == 0 and _raw_files(env)
     assert env.scalar("SELECT count(*) FROM intake.chunk") > 0
+    assert env.scalar("SELECT count(*) FROM archive.purged") == 0
 
 
 def test_purge_disabled_only_logs(env, device, capsys):

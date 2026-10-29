@@ -29,21 +29,53 @@ def test_paths():
     assert r.hour == datetime(2026, 10, 26, 3, tzinfo=UTC) and r.head_boot_id == 0xAB
 
 
+def _chunks(n):
+    from tools import fake_head
+
+    h = fake_head.FakeHead()
+    return [h.next_chunk() for _ in range(n)]
+
+
 def test_append_scan_and_torn_tail(root):
+    c = _chunks(3)
     p = files.raw_path("head-x", 1, US)
     with files.Appender() as a:
-        o1 = a.append(p, files.raw_record_head(3, US), b"abc")
-        o2 = a.append(p, files.raw_record_head(2, US + 1), b"de")
+        o1 = a.append(p, files.raw_record_head(len(c[0]), US), c[0])
+        o2 = a.append(p, files.raw_record_head(len(c[1]), US + 1), c[1])
         a.sync()
-    assert (o1, o2) == (12, 12 + 3 + 12)
-    assert files.read_at(p, o2, 2) == b"de"
+    assert (o1, o2) == (12, 12 + len(c[0]) + 12)
+    assert files.read_at(p, o2, len(c[1])) == c[1]
+    end_ok = 24 + len(c[0]) + len(c[1])
     # 쓰는 중에 멈춘 꼬리
     with open(files.resolve(p), "ab") as f:
-        f.write(files.raw_record_head(100, US) + b"xy")
-    recs, end = files.scan_raw(p)
-    assert [r.data for r in recs] == [b"abc", b"de"] and end == 12 + 3 + 12 + 2
-    assert files.truncate_torn_tail(p, end) == 14
+        f.write(files.raw_record_head(len(c[2]), US) + c[2][:100])
+    garbage = []
+    recs, end = files.scan_raw(p, garbage)
+    assert [r.data for r in recs] == c[:2] and end == end_ok
+    assert garbage == [(end_ok, 112)]
+    assert files.truncate_torn_tail(p, end) == 112
     assert files.size(p) == end
+
+
+def test_torn_record_in_middle_keeps_later_records(root):
+    """작업자가 쓰는 중에 죽고(uvicorn이 다시 띄움) 다음 요청이 그 뒤에 이어 쓴 경우.
+
+    뒤의 확인 받은 레코드를 읽을 수 있어야 하고, 꼬리 자르기가 그것을 자르면 안 됨.
+    """
+    c = _chunks(4)
+    p = files.raw_path("head-x", 1, US)
+    rec = lambda x: files.raw_record_head(len(x), US) + x  # noqa: E731
+    torn = rec(c[1])[: 12 + len(c[1]) // 2]
+    files.resolve(p).parent.mkdir(parents=True)
+    files.resolve(p).write_bytes(rec(c[0]) + torn + rec(c[2]) + rec(c[3]))
+    garbage = []
+    recs, end = files.scan_raw(p, garbage)
+    assert [r.data for r in recs] == [c[0], c[2], c[3]]
+    assert garbage == [(len(rec(c[0])), len(torn))]
+    assert end == files.size(p)
+    assert files.truncate_torn_tail(p, end) == 0
+    off = recs[1].offset
+    assert files.read_at(p, off, len(c[2])) == c[2]
 
 
 def test_rollback_truncates(root):

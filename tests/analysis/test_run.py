@@ -219,3 +219,77 @@ def test_frameless_chunk_inside_segment_still_raw(env, device):
     assert run_jobs(env, make_core(), ("analysis",)) == ["done"]
     run = _runs(env)[0]
     assert (run["input"], run["n_chunks_sent"]) == ("raw", s["n_chunks"])
+
+
+def _reopened_segment(env, device):
+    """끊김 동안 침묵으로 닫혀 작업 하나가 대기 중이고, 밀린 묶음으로 다시 열린 구간."""
+    from tests.support import Feeder
+    from tools import fake_head
+
+    f = Feeder(env, {fake_head.TEST_DEVICE_MAC: device})
+    f.send(fake_head.scenario("outage"))
+    seg = env.one("SELECT id, state FROM segment.segment")
+    assert seg["state"] == "open"
+    assert env.scalar("SELECT count(*) FROM pipeline.job WHERE kind = 'analysis' AND state = 'queued'") == 1
+    env.clock.advance(120)  # 침묵 60초가 지났지만 segment 루프는 아직 돌지 않음
+    return seg["id"]
+
+
+def test_an2_open_then_close_race_requeues(env, device, monkeypatch):
+    """AN-2·SG-5 경합 1: 작업이 구간을 '열림'으로 본 바로 그때 segment 루프가 닫음.
+
+    작업이 구간 행을 잠그고 있으므로 닫기는 작업이 끝날 때까지 기다리고, 그 뒤의 작업 넣기가 성공해야 함
+    (그렇지 않으면 작업 없이 닫힌 구간이 남아, 삭제가 분석 안 된 원본을 지울 수 있음)."""
+    import threading
+    import time
+
+    from uwbserver.analysis import store as an_store
+    from uwbserver.segment import run as segment_run
+
+    seg = _reopened_segment(env, device)
+    loop_conn = env.conn("core")
+    orig = an_store.lock_segment
+    loop = threading.Thread(target=lambda: segment_run.step(loop_conn))
+
+    def lock_then_loop_runs(conn, segment_id):
+        s = orig(conn, segment_id)  # 잠금을 잡은 채 '열림'
+        loop.start()
+        time.sleep(0.3)  # 루프가 이 구간을 닫으려다 잠금에 막힘
+        return s
+
+    monkeypatch.setattr(an_store, "lock_segment", lock_then_loop_runs)
+    assert run_jobs(env, make_core(), ("analysis",), limit=1) == ["segment_open"]
+    loop.join(timeout=10)
+    assert env.one("SELECT state FROM segment.segment WHERE id = %s", (seg,))["state"] == "closed"
+    assert env.q("SELECT state FROM pipeline.job WHERE kind = 'analysis' ORDER BY id") == [
+        {"state": "done"}, {"state": "queued"}
+    ]
+    monkeypatch.setattr(an_store, "lock_segment", orig)
+    assert run_jobs(env, make_core(), ("analysis",)) == ["done"]
+
+
+def test_an2_close_in_progress_then_job_waits(env, device):
+    """AN-2·SG-5 경합 2: 닫는 트랜잭션이 아직 커밋 전일 때 작업이 시작하면, 작업은 기다렸다가 '닫힘'을 보고 분석함."""
+    import threading
+
+    from uwbserver.analysis import run as analysis_run
+
+    seg = _reopened_segment(env, device)
+    core = make_core()
+    worker = env.conn("core")
+    with worker.transaction():
+        job = jobs.claim(worker, ("analysis",), worker="w", now=clock.now())
+    closer = env.conn("core")
+    tx = closer.transaction()
+    tx.__enter__()
+    closer.execute("UPDATE segment.segment SET state = 'closed', closed_reason = 'silence_60s' WHERE id = %s", (seg,))
+    assert not jobs.enqueue_analysis(closer, seg, now=clock.now())  # 실행 중인 작업 때문에 넣지 못함
+    result = {}
+    t = threading.Thread(target=lambda: result.setdefault("r", analysis_run.handle(worker, job, core.client)))
+    t.start()
+    t.join(timeout=0.5)
+    assert t.is_alive(), "작업이 구간 행 잠금을 기다려야 함"
+    tx.__exit__(None, None, None)
+    t.join(timeout=30)
+    assert result["r"] == "done"
+    assert len(_runs(env)) == 1

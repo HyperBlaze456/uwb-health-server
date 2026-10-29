@@ -107,10 +107,18 @@ class SegmentState:
     analysis_pending: bool  # 이 구간의 analysis 작업이 queued·running
     archive_pending: bool  # 이 구간 run들의 archive 작업이 queued·running
     last_analysis_state: str | None  # 가장 최근(id가 가장 큰) analysis 작업의 상태
+    run_stale: bool  # 가장 최근 run이 본 구간 revision이 지금 revision과 다름(그 뒤에 더해진 묶음을 아무 run도 못 봄)
+    archive_incomplete: bool  # 이 구간의 보관 범위 안에, 그 파일에 없는 묶음 행이 있음(범위를 만든 뒤 늦게 온 묶음)
 
 
 def segment_settled(s: SegmentState) -> str | None:
-    """구간의 원본을 지워도 되는가. 안 되면 이유."""
+    """구간의 원본을 지워도 되는가. 안 되면 이유.
+
+    SPEC AR-6의 조건에 둘을 더합니다(원본을 잃지 않는 쪽으로):
+    - run_stale: 분석과 구간 닫기가 엇갈려 마지막 묶음들을 아무 run도 보지 못한 경우를 막음.
+    - archive_incomplete: 이미 보관한 seq 범위 안의 빈자리를 늦은 묶음이 메운 경우. 그 묶음은 지금 규칙으로는
+      보관 파일에 넣을 수 없으므로(AR-3, 겹침 금지) raw를 지우지 않고 남깁니다.
+    """
     if s.state != "closed":
         return "segment_open"
     if s.n_runs == 0:
@@ -123,6 +131,10 @@ def segment_settled(s: SegmentState) -> str | None:
         return "archive_pending"
     if s.last_analysis_state == "failed":
         return "analysis_failed"
+    if s.run_stale:
+        return "run_stale"
+    if s.archive_incomplete:
+        return "archive_incomplete"
     return None
 
 

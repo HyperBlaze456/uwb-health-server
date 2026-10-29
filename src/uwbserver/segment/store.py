@@ -250,10 +250,11 @@ def has_input(conn: psycopg.Connection, segment_id: int) -> bool:
     """재분석 입력이 있는가(AN-4): 묶음 행이 모두 raw에 있거나, archive 범위가 있음."""
     return conn.execute(
         """
-        SELECT (SELECT count(*) FROM intake.chunk c
+        SELECT (SELECT count(*) FROM intake.chunk c, pipeline.cursor k
                  WHERE c.device_id = s.device_id AND c.head_boot_id = s.head_boot_id
                    AND c.chunk_seq BETWEEN s.first_seq AND s.last_seq
-                   AND (c.n_range > 0 OR c.n_imu_frames > 0)) = s.n_chunks
+                   AND (c.n_range > 0 OR c.n_imu_frames > 0)
+                   AND k.name = 'chunk' AND c.id <= k.last_id) = s.n_chunks
             OR EXISTS (SELECT 1 FROM archive.range a WHERE a.segment_id = s.id) AS ok
         FROM segment.segment s WHERE s.id = %s
         """,

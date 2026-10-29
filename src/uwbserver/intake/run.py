@@ -186,7 +186,11 @@ def reindex(
             continue
         if since_hour and name.hour < since_hour:
             continue
-        records, valid_end = files.scan_raw(path)
+        garbage: list[tuple[int, int]] = []
+        records, valid_end = files.scan_raw(path, garbage)
+        middle = [g for g in garbage if g[0] + g[1] < files.size(path)]
+        if middle:
+            log.warning("raw_garbage_skipped", path=path, spans=middle[:5])  # 쓰다 만 레코드 뒤의 레코드도 읽음
         if repair_tail:
             cut = files.truncate_torn_tail(path, valid_end)
             if cut:
@@ -211,6 +215,8 @@ def reindex(
             for kind, row in rules.block_rows(name.device_id, chunk, rec.received_us).items():
                 blocks[kind].append(row)
         with conn.transaction():
+            # 받기와 같은 잠금 순서(장치 → 전역). 받는 중인 요청이 있으면 그 커밋을 기다리고, 뒤의 요청은 이 행을 중복으로 봄
+            db.lock_device(conn, name.device_id)
             db.lock_chunk_insert(conn)
             stats.inserted += store.insert_chunks(conn, chunk_rows, skip_conflicts=True)
             store.insert_health(conn, blocks["health"], skip_conflicts=True)
@@ -228,6 +234,31 @@ def startup_reindex(conn: psycopg.Connection) -> ReindexStats:
     for item in stats.unreadable:
         log.error("raw_record_unreadable", where=item)
     return stats
+
+
+DB_RESTART_LOCK = 5  # 작업자가 여럿이어도 재색인은 하나만
+
+
+def reindex_if_db_restarted(conn: psycopg.Connection, state: dict) -> ReindexStats | None:
+    """IN-9 보강: DB만 재시작한 경우. 받기 커밋은 디스크를 기다리지 않으므로 마지막 1초 안쪽 행을 잃을 수 있는데,
+    intake 컨테이너는 그대로라 시작 때 재색인이 돌지 않습니다. DB가 다시 뜬 것을 보면 같은 기준으로 재색인합니다.
+
+    state: 부르는 쪽이 유지하는 dict(직전에 본 DB 시작 시각). 받기를 막지 않으므로 꼬리는 자르지 않습니다.
+    """
+    started = conn.execute("SELECT pg_postmaster_start_time() AS t").fetchone()["t"]
+    previous = state.get("db_started")
+    state["db_started"] = started
+    if previous is None or started == previous:
+        return None
+    if not conn.execute("SELECT pg_try_advisory_lock(%s, 0) AS ok", (DB_RESTART_LOCK,)).fetchone()["ok"]:
+        return None
+    try:
+        since = rules.reindex_since_hour(store.max_received_at(conn))
+        stats = reindex(conn, since_hour=since, repair_tail=False)
+        log.warning("db_restart_reindex", since=since, inserted=stats.inserted, files=stats.files)
+        return stats
+    finally:
+        conn.execute("SELECT pg_advisory_unlock(%s, 0)", (DB_RESTART_LOCK,))
 
 
 # ---------------------------------------------------------------- 거절한 묶음 다시 넣기 (IN-10)

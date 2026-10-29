@@ -6,8 +6,10 @@
 
 import os
 import sys
+import threading
 from contextlib import asynccontextmanager
 
+import psycopg
 from fastapi import FastAPI, Response
 
 from uwbserver.intake import routes, run
@@ -20,9 +22,13 @@ def create_app() -> FastAPI:
         log.setup("intake")
         app.state.pool = db.pool("intake", max_size=8)
         app.state.replies = alert.ReplyWatch()
+        stop = threading.Event()
+        watcher = threading.Thread(target=_watch_db_restart, args=(stop,), daemon=True)
+        watcher.start()
         try:
             yield
         finally:
+            stop.set()
             app.state.pool.close()
 
     app = FastAPI(title="uwb intake", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -42,6 +48,24 @@ def create_app() -> FastAPI:
         return Response(status_code=200 if ok_dirs else 503)
 
     return app
+
+
+def _watch_db_restart(stop: threading.Event, every_s: float = 30.0) -> None:
+    """DB만 재시작했으면 재색인(run.reindex_if_db_restarted). DB가 내려가 있는 동안은 다음 차례에 다시 봄."""
+    state: dict = {}
+    conn = None
+    while not stop.wait(0 if conn is None and not state else every_s):
+        try:
+            if conn is None or conn.closed:
+                conn = db.connect("intake")
+            run.reindex_if_db_restarted(conn, state)
+        except psycopg.Error as e:
+            log.warning("db_restart_watch_failed", error=str(e).strip())
+            if conn is not None:
+                conn.close()
+            conn = None
+    if conn is not None:
+        conn.close()
 
 
 app = create_app()

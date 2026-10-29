@@ -88,4 +88,6 @@ docker compose exec core python tools/verify_archive.py
 1. AI 모델(gaitfusion의 걷기 구간 찾기)이 실제 기록에서 걷기를 빠뜨리지 않는지 확인했음.
 2. 복구 연습(`ops/restore.md` 1절)을 한 번 통과했음.
 
+지운 raw 파일은 `archive.purged` 표에 경로, 레코드 수, 시각이 영구히 남습니다. 파일 안의 레코드 하나라도 DB 행이 없거나, 분석 뒤에 더해진 묶음이 있거나, 보관 범위에 빠진 묶음이 있으면 그 파일은 지우지 않고 로그(`kept_reasons`)에 이유를 남깁니다.
+
 켜기 전에 며칠 치 `purge_dry_run` 로그의 수가 예상과 맞는지 봅니다. 켜는 법: `.env`에서 `PURGE_ENABLED=true`로 바꾸고 `docker compose up -d core`.

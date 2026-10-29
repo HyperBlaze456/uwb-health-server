@@ -277,6 +277,7 @@ volumes: {certs: {}, pgdata: {}}
 | 궤적 | `/data/trajectory/<run_id>/<bout idx>-<side>.trj` | C2 응답의 TRJ1 파트 그대로(7.3절) |
 
 - raw·rejected는 장치마다 이어 쓰기만 합니다(`O_APPEND`). 같은 묶음 키가 raw에 두 번 있을 수 있습니다(응답 직전에 멈춘 뒤 Head가 다시 보낸 경우). 정본은 `intake.chunk`가 가리키는 쪽이고, 재색인은 먼저 나온 것을 씁니다.
+- raw·archive를 읽을 때는 레코드마다 묶음의 magic과 CRC를 확인합니다. 쓰다 만 레코드(작업자가 쓰는 중에 죽음)가 파일 **중간**에 있어도 그 뒤에서 다음 온전한 레코드를 찾아 계속 읽습니다. 시작 때 재색인(IN-9)이 자르는 것은 마지막 온전한 레코드 **뒤**의 꼬리뿐입니다. 그래서 확인 받은 묶음을 자르지 않습니다.
 - archive·결과 원문·궤적은 임시 이름으로 쓰고 `fsync` 뒤 이름을 바꿉니다. 이름을 바꾼 뒤에야 DB 행을 넣습니다.
 - 파일만 있어도 색인을 다시 만들 수 있습니다: raw → `intake.*`(`reindex_raw.py`), archive → `archive.range`(`verify_archive.py --reindex`). archive 행을 파일에서 다시 만들 때 `device_id`·`head_boot_id`·seq 범위는 경로에서, `segment_id`는 `(device_id, head_boot_id, seq 범위)`를 덮는 구간에서 찾고, 그 범위를 만든 run은 알 수 없으므로 `from_run_id = NULL`입니다. 덮는 구간이 아직 없으면(DB를 복구한 직후) core가 raw 재색인분을 처리한 뒤에 다시 돌립니다.
 - gaitfusion에 보낼 때는 raw·archive 레코드의 12 B 머리를 C1의 `u32 len`으로 바꿔 이어 붙입니다.
@@ -335,7 +336,7 @@ volumes: {certs: {}, pgdata: {}}
   - 블록 행: 키는 묶음 키, `at`은 묶음 시각(flags bit0이면 `utc_us_start`, 아니면 수신 시각 − 1초) + `at_offset_us`. 조회 열은 10절 DDL의 주석대로. `block`은 payload 바이트 그대로입니다.
   - `intake.rejected`: 코드, 검사 단계 번호, 걸린 필드 이름(`detail`), 머리를 읽을 수 있었으면 `head_boot_id`·`chunk_seq`, rejected 파일 위치.
 - **IN-8 받기는 다른 묶음을 읽지 않습니다.** 장치 토큰 조회와 중복 확인 말고는 표를 읽지 않습니다. 묶음 사이의 일관성은 segment가 봅니다.
-- **IN-9 시작 때 재색인.** intake는 받기를 열기 전에 raw 파일 중 이름의 hour가 `(intake.chunk의 최대 received_at − 1시간)`의 hour 이후인 것을 모두 처음부터 읽어, `intake.chunk`에 없는 키를 같은 해독기로 다시 넣습니다(`ON CONFLICT DO NOTHING`). `synchronous_commit = off`라 서버가 비정상 종료되면 마지막 1초 안쪽 행이 빠질 수 있기 때문입니다. 기준이 재시작 시각이 아니라 마지막으로 남은 행이므로, 오래 꺼져 있다 켜도 빠진 행을 찾습니다. 표가 비어 있으면 raw 파일 전부입니다. 재색인은 intake 컨테이너가 uvicorn을 띄우기 전에 한 번 돌리고(`python -m uwbserver.process.intake reindex`), 그동안 받기는 열려 있지 않습니다(Head는 연결 실패로 보고 다시 보냄). 파일 하나 = 트랜잭션 하나이고, 각 트랜잭션은 전역 잠금(PL-3)을 잡습니다.
+- **IN-9 시작 때 재색인.** intake는 받기를 열기 전에 raw 파일 중 이름의 hour가 `(intake.chunk의 최대 received_at − 1시간)`의 hour 이후인 것을 모두 처음부터 읽어, `intake.chunk`에 없는 키를 같은 해독기로 다시 넣습니다(`ON CONFLICT DO NOTHING`). `synchronous_commit = off`라 서버가 비정상 종료되면 마지막 1초 안쪽 행이 빠질 수 있기 때문입니다. 기준이 재시작 시각이 아니라 마지막으로 남은 행이므로, 오래 꺼져 있다 켜도 빠진 행을 찾습니다. 표가 비어 있으면 raw 파일 전부입니다. 재색인은 intake 컨테이너가 uvicorn을 띄우기 전에 한 번 돌리고(`python -m uwbserver.process.intake reindex`), 그동안 받기는 열려 있지 않습니다(Head는 연결 실패로 보고 다시 보냄). 파일 하나 = 트랜잭션 하나이고, 각 트랜잭션은 받기와 같은 순서로 장치 잠금과 전역 잠금(PL-3)을 잡습니다. DB만 재시작한 경우(intake는 그대로)에도 같은 기준으로 재색인합니다: intake가 30초마다 `pg_postmaster_start_time()`을 보고, 바뀌었으면 받기를 연 채로 재색인합니다(이때는 꼬리를 자르지 않음).
 - **IN-10 거절한 묶음 다시 넣기.** `tools/reingest_rejected.py <파일> [--since]`는 rejected 레코드를 받기와 같은 검사·쓰기 경로로 다시 넣습니다. 서버의 해독기를 고친 뒤(예: 새 `version` 지원) 씁니다. 토큰 대신 파일 경로의 `device_id`로 장치를 정하고, `intake_rw` 역할로 접속합니다. 통과한 것은 raw와 `intake.chunk`에 들어가고 rejected 레코드는 그대로 둡니다.
 
 ### 6.4 구간 (SG)
@@ -386,10 +387,10 @@ volumes: {certs: {}, pgdata: {}}
 ### 6.5 분석 호출 (AN)
 
 - **AN-1 작업.** `analysis {segment_id}` 작업 하나가 run 하나(또는 0개)를 만듭니다.
-- **AN-2 열린 구간.** 작업을 시작할 때 구간이 열려 있으면 run 없이 `done`입니다. 닫힐 때 새 작업이 들어옵니다.
+- **AN-2 열린 구간.** 작업을 시작할 때 구간이 열려 있으면 run 없이 `done`입니다. 닫힐 때 새 작업이 들어옵니다. 이 판단과 입력 고르기(AN-4)는 구간 행을 잠근(`FOR UPDATE`) 짧은 트랜잭션 안에서 합니다. 구간을 닫는 segment 트랜잭션과 차례가 정해지므로, "열려 있어 끝냄"과 "닫으며 작업 넣기(실행 중인 작업이 있어 넣지 못함)"가 엇갈려 작업 없이 닫힌 구간이 남지 않습니다. C2 호출 동안에는 잠그지 않습니다.
 - **AN-3 배치 기다리기.** 구간의 `installation_id`가 비어 있으면 작업을 10분 뒤로 미룹니다(`attempts`는 그대로, `last_error = 'waiting_installation'`). 작업을 만든 지 1시간이 지나면 기다리지 않고 `anchors = null`로 보냅니다.
 - **AN-4 입력 고르기.**
-  - 구간의 모든 묶음 행이 `intake.chunk`에 있으면 `input = 'raw'`이고 raw 파일에서 `chunk_seq` 순으로 읽습니다.
+  - 구간의 모든 묶음 행이 `intake.chunk`에 있으면 `input = 'raw'`이고 raw 파일에서 `chunk_seq` 순으로 읽습니다. 셀 때 프레임 없는 묶음(SG-2)과 segment가 아직 처리하지 않은 묶음(`id > cursor`)은 범위 안에 있어도 뺍니다(둘 다 구간의 `n_chunks`에 없음).
   - 아니면 `archive.range`가 있으면 `input = 'archive'`이고 그 구간의 archive 파일을 seq 순으로 이어 읽습니다. 범위 사이는 seq 빈자리로 보입니다.
   - 둘 다 없으면 run 없이 `done`(`last_error = 'no_input'`).
 - **AN-5 문맥.** C2 `context`(7.1절)를 만듭니다.
@@ -422,10 +423,11 @@ volumes: {certs: {}, pgdata: {}}
 - **AR-5 끝 표시.** run마다 `archive.cut` 행을 남깁니다(걷기가 없어도 `n_ranges = 0`). 30일 삭제 조건의 근거입니다.
 - **AR-6 30일 삭제 조건.** raw 파일 하나(수신 hour가 `RAW_RETENTION_DAYS`보다 이전)는 그 안의 모든 묶음이 다음을 만족할 때만 지웁니다.
   - 프레임 없는 묶음(SG-2): `id ≤ cursor`이면 됩니다.
-  - 프레임 있는 묶음: `id ≤ cursor`이고, 속한 구간이 `closed`이고, 그 구간에 run이 하나 이상 있고, 그 구간의 모든 run에 `archive.cut`이 있고, 그 구간의 `analysis` 작업과 그 run들의 `archive` 작업이 `queued`·`running`이 아니고, 그 구간의 가장 최근(id가 가장 큰) `analysis` 작업이 `failed`가 아님.
+  - 프레임 있는 묶음: `id ≤ cursor`이고, 속한 구간이 `closed`이고, 그 구간에 run이 하나 이상 있고, 그 구간의 모든 run에 `archive.cut`이 있고, 그 구간의 `analysis` 작업과 그 run들의 `archive` 작업이 `queued`·`running`이 아니고, 그 구간의 가장 최근(id가 가장 큰) `analysis` 작업이 `failed`가 아니고, 가장 최근 run의 `segment_revision`이 지금 구간 `revision`과 같고(그 뒤에 더해진 묶음을 아무 run도 못 본 경우를 막음), 그 구간의 `archive.range`마다 범위 안 `intake.chunk` 행 수가 범위의 `n_chunks`를 넘지 않음(보관한 범위의 빈자리를 늦은 묶음이 메운 경우를 막음, 15절 정할 것 6).
+  - "그 안의 모든 묶음"은 파일을 읽어 얻은 **레코드**로 셉니다. 레코드의 키에 `intake.chunk` 행이 아예 없으면(DB만 재시작해 받기 커밋을 잃은 경우) 지우지 않고 오류 로그를 남깁니다. 검사부터 행 삭제까지 PL-3의 전역 잠금을 쥡니다(그 사이에 재색인이 넣은 행을 확인 없이 지우지 않게).
   - 프레임 있는 묶음이 어느 구간에도 속하지 않으면 파일을 지우지 않고 오류 로그를 남깁니다(버그 신호).
   - 그래서 분석이 실패한 채로 남은 구간의 원본은 지우지 않습니다. 관리자가 재분석해 성공하면 그다음 날 조건을 만족합니다.
-  - 지우는 순서: `intake.health`·`intake.system` 행 → `intake.chunk` 행 → 파일. 중간에 멈추면 남은 것은 다음 날 정리합니다. `intake.survey`는 지우지 않습니다.
+  - 지우는 순서: `intake.health`·`intake.system` 행 → `intake.chunk` 행과 `archive.purged` 행(같은 트랜잭션) → 파일. `archive.purged`는 무엇을 언제 지웠는지의 영구 기록이고, 파일을 지우기 전에 멈췄으면 다음 날 이 행을 보고 파일을 마저 지웁니다. `intake.survey`는 지우지 않습니다.
   - rejected 파일과 `intake.rejected` 행은 30일이 지나면 조건 없이 지웁니다.
 - **AR-7 삭제 스위치.** `PURGE_ENABLED = false`(기본)이면 purge는 아무것도 지우지 않고 지울 파일과 행 수만 로그에 적습니다. 켜는 조건: 복구 연습(OP-3)을 한 번 마쳤고, gaitfusion의 걷기 구간 찾기를 실제 기록으로 확인했음.
 - **AR-8 30일 뒤 재분석.** 구간의 raw가 지워진 뒤의 재분석은 AN-4에 따라 archive를 씁니다. 30일 안의 재분석이 옛 run이 못 본 걷기를 찾으면 archive가 그만큼 늘어납니다.
@@ -1030,6 +1032,15 @@ CREATE TABLE archive.cut (
   n_new_chunks integer     NOT NULL,
   done_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- 등급: 영구(삭제 기록). 30일 삭제(AR-6)가 지운 raw 파일 하나 = 행 하나. 무엇을 언제 지웠는지 남기고,
+-- 행을 지운 뒤 파일을 지우기 전에 멈췄으면 다음 날 이 행을 보고 파일을 마저 지움(행이 없는 레코드를 "잃은 행"과 구별).
+CREATE TABLE archive.purged (
+  path       text        PRIMARY KEY,         -- '/data/raw/<device>/<boot>/<YYYY-MM-DDTHH>.bin'
+  n_records  integer     NOT NULL,            -- 지울 때 파일에 있던 온전한 레코드 수
+  n_chunks   integer     NOT NULL,            -- 지운 intake.chunk 행 수
+  deleted_at timestamptz NOT NULL             -- 행을 지운 시각. 파일은 이 커밋 뒤에 지움
+);
 ```
 
 ### 007_roles.sql
@@ -1454,6 +1465,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA summary TO api_rw;
 3. 앱 기술 스택(API는 OpenAPI로 무관).
 4. 원격 백업 저장소: S3 호환 오브젝트 스토리지(버전 보존 기능) 또는 두 번째 머신.
 5. 30일 삭제를 켜는 때(AR-7의 조건을 언제 확인할지).
+6. 보관한 범위 안의 빈자리를 늦은 묶음이 메운 경우(예: 해독기를 고친 뒤 IN-10으로 다시 넣은 묶음). `archive.range`는 seq 구간이고 겹침을 막으므로(AR-3) 그 묶음을 보관 파일에 넣을 길이 없습니다. 지금은 AR-6의 `archive_incomplete` 조건으로 그 구간의 raw를 지우지 않고 남깁니다. 정할 것: 보충 범위를 허용할지(겹침 규칙을 바꿈), 아니면 지금처럼 raw를 남길지.
+7. wire.md의 "내용" 열에만 적힌 값 규칙(예: 측량이 실패하면 좌표 0)을 받을 때 검사할지. 지금은 "검사" 열만 검사합니다.
 
 확인할 것(구현 중):
 1. 권장 VM 디스크의 `fdatasync` 시간(9절). 20 ms를 넘으면 디스크 종류를 바꿉니다.

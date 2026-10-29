@@ -222,3 +222,21 @@ def test_id_order_equals_commit_order(env):
     assert not violations
     assert env.scalar("SELECT count(*) FROM intake.chunk") == sum(len(r.keys) for s in streams.values() for r in s)
 
+
+
+def test_reindex_after_db_only_restart(env, device, intake_client):
+    """IN-9 보강: DB만 재시작해 받기 행을 잃으면(intake는 그대로) intake가 DB 재시작을 보고 재색인."""
+    reqs = fake_head.scenario("normal", duration_s=60)
+    _post_all(env, intake_client, device.token, reqs)
+    n = env.scalar("SELECT count(*) FROM intake.chunk")
+    conn = env.conn("intake")
+    state: dict = {}
+    assert intake_run.reindex_if_db_restarted(conn, state) is None  # 처음 본 시작 시각을 적음
+    env.q("DELETE FROM intake.health WHERE chunk_seq >= 50")
+    env.q("DELETE FROM intake.system WHERE chunk_seq >= 50")
+    env.q("DELETE FROM intake.chunk WHERE chunk_seq >= 50")
+    assert intake_run.reindex_if_db_restarted(conn, state) is None  # 시작 시각이 같으면 아무것도 안 함
+    state["db_started"] = state["db_started"].replace(year=2000)  # DB가 다시 뜬 것처럼
+    stats = intake_run.reindex_if_db_restarted(conn, state)
+    assert stats is not None and stats.inserted == n - 50
+    assert env.scalar("SELECT count(*) FROM intake.chunk") == n

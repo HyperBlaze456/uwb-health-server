@@ -32,3 +32,12 @@ CREATE TABLE archive.cut (
   n_new_chunks integer     NOT NULL,
   done_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- 등급: 영구(삭제 기록). 30일 삭제(AR-6)가 지운 raw 파일 하나 = 행 하나. 무엇을 언제 지웠는지 남기고,
+-- 행을 지운 뒤 파일을 지우기 전에 멈췄으면 다음 날 이 행을 보고 파일을 마저 지움(행이 없는 레코드를 "잃은 행"과 구별).
+CREATE TABLE archive.purged (
+  path       text        PRIMARY KEY,         -- '/data/raw/<device>/<boot>/<YYYY-MM-DDTHH>.bin'
+  n_records  integer     NOT NULL,            -- 지울 때 파일에 있던 온전한 레코드 수
+  n_chunks   integer     NOT NULL,            -- 지운 intake.chunk 행 수
+  deleted_at timestamptz NOT NULL             -- 행을 지운 시각. 파일은 이 커밋 뒤에 지움
+);

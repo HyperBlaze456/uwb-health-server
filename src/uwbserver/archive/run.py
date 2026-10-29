@@ -12,7 +12,7 @@ from datetime import timedelta
 import psycopg
 
 from uwbserver.archive import rules, store
-from uwbserver.pipeline import clock, files, jobs, log, settings
+from uwbserver.pipeline import clock, db, files, jobs, log, settings, wire
 from uwbserver.pipeline.jobs import Job
 
 
@@ -107,6 +107,63 @@ class PurgeStats:
     rejected_rows: int = 0
 
 
+def _file_keys(path: str) -> tuple[str | None, list[tuple[int, int]]]:
+    """raw 파일의 (장치, 온전한 레코드의 묶음 키들). 파일이 이미 없으면 (장치, [])."""
+    name = files.parse_raw_path(path)
+    if not files.exists(path):
+        return name.device_id, []
+    records, _ = files.scan_raw(path)
+    return name.device_id, [wire.peek_key(r.data) for r in records]
+
+
+def _purge_raw_file(conn: psycopg.Connection, path: str, enabled: bool, now, stats: PurgeStats) -> str | None:
+    """raw 파일 하나. 지웠으면(꺼져 있으면 "지울" 것이면) None, 남기면 그 이유.
+
+    AR-6: 파일 안의 **모든 레코드**가 행으로 있어야 하고 그 행들이 조건을 만족해야 함. 행만 보면, DB만 재시작해
+    잃은 행(받기 커밋은 디스크를 기다리지 않음)의 레코드를 확인 없이 지우게 됨.
+    검사부터 행 삭제까지 묶음 넣기 전역 잠금(PL-3)을 쥐어, 그 사이에 재색인 등이 넣은 행을 확인 없이 지우지 않음.
+    """
+    device_id, keys = _file_keys(path)
+    with conn.transaction():
+        db.lock_chunk_insert(conn)
+        chunk_states = store.chunk_states(conn, path)
+        if not chunk_states and store.purged_exists(conn, path):
+            leftover = True  # 어제 행을 지운 뒤 파일을 지우기 전에 멈춤
+        else:
+            leftover = False
+            missing = store.keys_without_row(conn, device_id, keys)
+            if missing:
+                log.error("purge_records_without_row", path=path, count=len(missing), first=missing[:5],
+                          hint="tools/reindex_raw.py로 행을 되살린 뒤 다음 날 다시 판단")  # fmt: skip
+                return "records_without_row"
+            cursor = jobs.get_cursor(conn)
+            segs = store.segment_states(conn, sorted({c.segment_id for c in chunk_states if c.segment_id}))
+            verdict = rules.file_verdict(chunk_states, segs, cursor)
+            if not verdict.deletable:
+                if verdict.orphan:
+                    log.error("purge_chunk_without_segment", path=path)
+                return verdict.reason
+            if not enabled:
+                counts = store.count_rows_for_path(conn, path)
+                stats.raw_files_deleted += 1
+                stats.chunk_rows += counts["chunk"]
+                stats.block_rows += counts["health"] + counts["system"]
+                return None
+            stats.block_rows += store.delete_blocks_for_path(conn, path)  # 1. 블록 행
+            n = store.delete_chunks_for_path(conn, path)  # 2. 묶음 행
+            stats.chunk_rows += n
+            store.insert_purged(conn, path, len(keys), n, now)  # 무엇을 언제 지웠는지
+    if not enabled:
+        if leftover:
+            stats.raw_files_deleted += 1
+        return None
+    files.delete(path)  # 3. 파일
+    stats.raw_files_deleted += 1
+    if leftover:
+        log.warning("purge_leftover_file_deleted", path=path)
+    return None
+
+
 def purge(conn: psycopg.Connection) -> PurgeStats:
     s = settings.get()
     now = clock.now()
@@ -124,28 +181,10 @@ def purge(conn: psycopg.Connection) -> PurgeStats:
     candidates = {p for p in [*files.list_files("raw"), *store.old_raw_paths(conn, before)] if raw_expired(p)}
     for path in sorted(candidates):
         stats.raw_files_checked += 1
-        with conn.transaction():
-            cursor = jobs.get_cursor(conn)
-            chunk_states = store.chunk_states(conn, path)
-            segs = store.segment_states(conn, sorted({c.segment_id for c in chunk_states if c.segment_id}))
-            verdict = rules.file_verdict(chunk_states, segs, cursor)
-            if not verdict.deletable:
-                stats.raw_files_kept += 1
-                kept_reasons[verdict.reason] = kept_reasons.get(verdict.reason, 0) + 1
-                if verdict.orphan:
-                    log.error("purge_chunk_without_segment", path=path)
-                continue
-            if not s.purge_enabled:
-                counts = store.count_rows_for_path(conn, path)
-                stats.raw_files_deleted += 1
-                stats.chunk_rows += counts["chunk"]
-                stats.block_rows += counts["health"] + counts["system"]
-                continue
-            stats.block_rows += store.delete_blocks_for_path(conn, path)  # 1. 블록 행
-            stats.chunk_rows += store.delete_chunks_for_path(conn, path)  # 2. 묶음 행
-        if s.purge_enabled:
-            files.delete(path)  # 3. 파일. 여기서 멈추면 다음 날 행이 없는 파일로 다시 후보가 됨
-            stats.raw_files_deleted += 1
+        reason = _purge_raw_file(conn, path, s.purge_enabled, now, stats)
+        if reason:
+            stats.raw_files_kept += 1
+            kept_reasons[reason] = kept_reasons.get(reason, 0) + 1
 
     # 거절한 묶음: 30일이 지나면 조건 없이
     rejected = {p for p in [*files.list_files("rejected"), *store.old_rejected_paths(conn, before)] if rejected_expired(p)}

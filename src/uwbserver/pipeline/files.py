@@ -10,6 +10,7 @@ DB에는 '/data/...' 꼴의 논리 경로를 적습니다. 실제 위치는 sett
 import os
 import re
 import struct
+import zlib
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -153,23 +154,59 @@ class RejectedRecord:
     data: bytes
 
 
-def scan_raw(path: str) -> tuple[list[RawRecord], int]:
-    """raw·archive 파일을 처음부터 읽습니다. (레코드들, 온전한 끝 위치)를 돌려줍니다.
+CHUNK_MAGIC = 0xC1  # wire.md 머리 첫 바이트
+_CHUNK_MIN, _CHUNK_MAX = 52, 11_284  # wire.md 묶음 길이 한도
 
-    끝이 잘린 레코드(쓰는 중에 멈춤)는 레코드로 내지 않습니다. 그 바이트는 확인 응답을 받지 못했으므로
-    Head가 다시 보냅니다.
+
+def _record_ok(buf: bytes, pos: int) -> int | None:
+    """pos에 온전한 raw 레코드가 있으면 묶음 길이, 아니면 None. 묶음의 magic과 CRC로 확인합니다."""
+    if pos + RAW_HEAD.size > len(buf):
+        return None
+    n, _ = RAW_HEAD.unpack_from(buf, pos)
+    start = pos + RAW_HEAD.size
+    if not (_CHUNK_MIN <= n <= _CHUNK_MAX) or start + n > len(buf) or buf[start] != CHUNK_MAGIC:
+        return None
+    if zlib.crc32(buf[start : start + n - 4]) != int.from_bytes(buf[start + n - 4 : start + n], "little"):
+        return None
+    return n
+
+
+def scan_raw(path: str, garbage: list[tuple[int, int]] | None = None) -> tuple[list[RawRecord], int]:
+    """raw·archive 파일을 처음부터 읽습니다. (레코드들, 마지막 온전한 레코드의 끝 위치)를 돌려줍니다.
+
+    레코드마다 묶음의 magic과 CRC를 확인합니다. 쓰다 만 레코드(작업자가 쓰는 중에 죽음)가 파일 중간에 있어도
+    그 뒤에서 다음 온전한 레코드를 찾아 계속 읽습니다. 그래서 중간의 깨진 바이트 때문에 뒤의 레코드를 잃지 않습니다.
+    깨진 구간은 garbage에 (위치, 길이)로 담습니다. 그 바이트는 확인 응답을 받지 못했으므로 Head가 다시 보냈습니다.
     """
     buf = resolve(path).read_bytes()
     out: list[RawRecord] = []
     pos = 0
+    end = 0
     while pos + RAW_HEAD.size <= len(buf):
-        n, us = RAW_HEAD.unpack_from(buf, pos)
+        n = _record_ok(buf, pos)
+        if n is None:
+            # 다음 후보: 머리 뒤 첫 바이트가 magic인 곳
+            nxt = pos + 1
+            while True:
+                hit = buf.find(bytes([CHUNK_MAGIC]), nxt + RAW_HEAD.size)
+                if hit < 0:
+                    nxt = len(buf)
+                    break
+                nxt = hit - RAW_HEAD.size
+                if _record_ok(buf, nxt) is not None:
+                    break
+                nxt += 1
+            if garbage is not None:
+                garbage.append((pos, nxt - pos))
+            pos = nxt
+            continue
+        _, us = RAW_HEAD.unpack_from(buf, pos)
         start = pos + RAW_HEAD.size
-        if start + n > len(buf):
-            break
         out.append(RawRecord(start, us, buf[start : start + n]))
-        pos = start + n
-    return out, pos
+        pos = end = start + n
+    if garbage is not None and pos < len(buf):  # 머리 하나도 안 되는 꼬리
+        garbage.append((pos, len(buf) - pos))
+    return out, end
 
 
 def scan_rejected(path: str) -> tuple[list[RejectedRecord], int]:
@@ -187,7 +224,10 @@ def scan_rejected(path: str) -> tuple[list[RejectedRecord], int]:
 
 
 def truncate_torn_tail(path: str, valid_end: int) -> int:
-    """valid_end 뒤의 잘린 꼬리를 잘라 냅니다. 잘라 낸 바이트 수를 돌려줍니다(IN-9 재색인 때)."""
+    """마지막 온전한 레코드(valid_end) 뒤의 꼬리만 잘라 냅니다. 잘라 낸 바이트 수를 돌려줍니다(IN-9 재색인 때).
+
+    valid_end는 scan_raw가 준 값이어야 합니다. 그 뒤에는 온전한 레코드가 없으므로 확인 받은 묶음을 자르지 않습니다.
+    """
     p = resolve(path)
     size = p.stat().st_size
     if size <= valid_end:
