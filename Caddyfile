@@ -1,0 +1,27 @@
+# proxy (SPEC 2.1, 4.1, 13.1). 바깥에 여는 포트는 443 하나입니다.
+#   /d/*   → intake:8001 (C1, Head의 묶음 올리기)
+#   그 밖  → api:8000    (C3, 앱)
+#
+# SITE_ADDRESS (compose의 proxy 환경 변수):
+#   - 도메인이 있으면 그 이름(예: uwb.example.org). Caddy가 공인 인증서를 자동으로 받고 갱신합니다.
+#   - 도메인이 없으면 VM의 IP(예: 203.0.113.10)를 넣고 아래 "tls internal" 줄의 주석을 풉니다.
+#     Caddy가 자체 CA로 인증서를 만들고, Head 펌웨어에는 그 루트 CA를 넣습니다(13.1).
+#     루트 CA 파일: certs 볼륨의 caddy/pki/authorities/local/root.crt
+#       docker compose cp proxy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt
+#   - 값이 없으면 localhost(자체 서명)로 뜹니다. 시험용입니다.
+
+{$SITE_ADDRESS:localhost} {
+	# tls internal
+
+	handle /d/* {
+		# IN-6: 요청 본문 한도. intake의 413 한도(131,072 B)와 같습니다.
+		request_body {
+			max_size 131072
+		}
+		reverse_proxy intake:8001
+	}
+
+	handle {
+		reverse_proxy api:8000
+	}
+}

@@ -1,14 +1,14 @@
 # SPEC 4.1: 개발·시험용 겹침. proxy를 빼고 intake 8001·api 8000·db 5432를 호스트에 열며,
-# gaitfusion 자리에 tools/fake_gaitfusion.py를 띄움.
+# gaitfusion 자리에 tools/fake_gaitfusion.py를 띄움. 호스트 포트는 바꿀 수 있음(전 구간 시험이 개발 DB 옆에서 돌게).
 services:
   proxy:
     profiles: [prod]
   db:
-    ports: ["5432:5432"]
+    ports: ["${DEV_DB_PORT:-5432}:5432"]
   intake:
-    ports: ["8001:8001"]
+    ports: ["${DEV_INTAKE_PORT:-8001}:8001"]
   api:
-    ports: ["8000:8000"]
+    ports: ["${DEV_API_PORT:-8000}:8000"]
   gaitfusion:
     image: uwb-server
     build: .

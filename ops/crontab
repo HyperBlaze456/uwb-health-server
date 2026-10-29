@@ -1,0 +1,20 @@
+# 호스트 cron (SPEC OP-1, OP-2, OP-3). 서버를 돌리는 사용자(docker 그룹, DATA_DIR 읽기 가능)의 crontab에 넣습니다:
+#   crontab -l | cat - ops/crontab | crontab -
+# 저장소를 /opt/uwb-health-server에 두었다고 가정합니다. 다르면 경로를 고칩니다.
+# 시각은 호스트 시간대입니다. 아래 값은 호스트가 UTC일 때 기준입니다(18:30 UTC = 한국 03:30).
+#
+# 실패하면 backup.sh가 ALERT_WEBHOOK_URL로 알리고, 표준 오류에 내용을 쓰고 0이 아닌 코드로 끝납니다.
+# 웹훅이 없으면 cron 메일이 알림입니다(MAILTO). 성공하면 아무것도 출력하지 않으므로 메일이 오지 않습니다.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=root
+# 매번의 출력을 남기려면(그 사용자가 쓸 수 있는 파일): BACKUP_LOG=/var/log/uwb-backup.log
+
+# raw·archive → 원격, 10분마다
+*/10 * * * * /opt/uwb-health-server/ops/backup.sh files
+
+# DB 덤프 → 원격, 매일. core의 30일 삭제(PURGE_AT_UTC 18:00) 뒤
+30 18 * * * /opt/uwb-health-server/ops/backup.sh db
+
+# archive 파일과 archive.range 대조, 매주 월요일(OP-3)
+0 19 * * 1 /opt/uwb-health-server/ops/backup.sh verify

@@ -3,7 +3,9 @@
 name: uwb
 
 x-app: &app
-  build: .
+  build:
+    context: .
+    args: {CORE_VERSION: "${CORE_VERSION:-dev}"}   # CORE_VERSION=$(git rev-parse --short HEAD) docker compose build
   image: uwb-server
   env_file: .env
   environment:
@@ -15,6 +17,7 @@ services:
   proxy:
     image: caddy:2.10.2
     ports: ["443:443"]
+    environment: {SITE_ADDRESS: "${SITE_ADDRESS:-localhost}"}
     volumes: [./Caddyfile:/etc/caddy/Caddyfile:ro, certs:/data]
     depends_on: [intake, api]
     restart: unless-stopped
