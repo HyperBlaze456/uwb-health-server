@@ -508,14 +508,11 @@ def test_system_block_round_trip():
         "fs": 0x10,
         "imu_acquisition_hz": 100,
         "imu_transport_hz": 100,
-        "set_members": ["e0:72:a1:00:00:01", "e0:72:a1:00:00:02", "e0:72:a1:00:00:03", "02:a1:b2:c3:d4:e5", None],
-        "reserved": 0,
-        "anchors": [
-            {"x": 0.0, "y": 0.0, "z": 0.0, "range_bias_m": 0.0},
-            {"x": 4.5, "y": 0.0, "z": 0.0, "range_bias_m": 0.125},
-            {"x": 0.0, "y": 5.25, "z": 0.0, "range_bias_m": -0.125},
-            {"x": 4.5, "y": 5.25, "z": 2.5, "range_bias_m": 0.0},
+        "set_members": [
+            "e0:72:a1:00:00:01", "e0:72:a1:00:00:02", "e0:72:a1:00:00:03", "02:a1:b2:c3:d4:e5", "00:00:00:00:00:00",
         ],
+        "reserved": 0,
+        "anchors": [[0.0, 0.0, 0.0, 0.0], [4.5, 0.0, 0.0, 0.125], [0.0, 5.25, 0.0, -0.125], [4.5, 5.25, 2.5, 0.0]],
         "firmware_id": "0123456789abcdef",
         "geometry_id": GEOMETRY_ID.decode(),
     }
@@ -581,10 +578,10 @@ def test_chunk_to_dict_is_json_ready():
     c = accepted(chunk(blocks=all_blocks()))
     d = wire.chunk_to_dict(c)
     assert json.loads(json.dumps(d)) == d
-    assert set(d) == {"header", "ranges", "imu_frames", "status", "crc32"}
+    assert list(d) == ["len", "header", "ranges", "imu_frames", "status", "crc32"]
     assert d["crc32"] == f"{zlib.crc32(c.data[:-4]):08x}"
-    assert set(d["status"]) == {"system", "health", "survey"}
-    assert d["status"]["health"]["at_offset_us"] == 20
+    assert [b["kind"] for b in d["status"]] == [1, 2, 3]
+    assert d["status"][1]["at_offset_us"] == 20 and d["status"][1]["len"] == 192
     assert d["imu_frames"][0]["tag_mac"] == "02:a1:b2:c3:d4:e5"
     assert d["imu_frames"][0]["samples"][0] == {"seq": 0, "tag_ms": 4900, "flags": 0b101, "raw": [100, -200, 16384, 1200, 5, -6, 7]}
     assert d["ranges"][0]["raw_cm"] == [120, 340, 560, 780]
@@ -628,8 +625,8 @@ def test_chunk_to_dict_is_json_ready():
         ),  # fmt: skip
         pytest.param(lambda: chunk(extra=b"\0"), Code.INCONSISTENT, 7, "header.status_len", id="trailing-byte"),
         pytest.param(
-            lambda: chunk(blocks=[block(2, health_payload()), b"\0\0\0"]), Code.INCONSISTENT, 7, "header.status_len",
-            id="blocks-sum",
+            lambda: chunk(blocks=[block(2, health_payload()), b"\0\0\0"]), Code.INCONSISTENT, 7, "block[1]",
+            id="blocks-sum",  # 7.5: 두 번째 블록의 머리가 CRC 앞에서 끝나지 않음
         ),  # fmt: skip
         pytest.param(
             lambda: chunk(blocks=[block(2, health_payload()), block(1, system_payload())]), Code.INCONSISTENT, 7,
@@ -740,7 +737,7 @@ BAD_FIELD_CASES = [
     # 머리
     pytest.param(lambda: chunk(head_us_start=-1), "header.head_us_start", id="head_us_start<0"),
     pytest.param(lambda: chunk(utc_us_start=wire.UTC_MIN_US - 1), "header.utc_us_start", id="utc<2025"),
-    pytest.param(lambda: chunk(utc_us_start=SERVER_UTC + DAY_US), "header.utc_us_start", id="utc>=server+1d"),
+    pytest.param(lambda: chunk(utc_us_start=SERVER_UTC + DAY_US + 1), "header.utc_us_start", id="utc>server+1d"),
     pytest.param(lambda: chunk(utc_us_start=-5), "header.utc_us_start", id="utc-negative"),
     pytest.param(lambda: chunk(flags=0, utc_us_start=1), "header.utc_us_start", id="utc-without-bit0"),
     pytest.param(lambda: chunk(flags=0b101), "header.flags", id="flags-bit2"),
@@ -954,6 +951,7 @@ GOOD_EDGE_CASES = [
     pytest.param(lambda: chunk([range_frame(rx=5), range_frame(rx=5)]), id="range-rx-equal"),
     pytest.param(lambda: chunk(utc_us_start=wire.UTC_MIN_US), id="utc=2025-01-01"),
     pytest.param(lambda: chunk(utc_us_start=SERVER_UTC + DAY_US - 1), id="utc=server+1d-1us"),
+    pytest.param(lambda: chunk(utc_us_start=SERVER_UTC + DAY_US), id="utc=server+1d"),  # wire.md: 양 끝 포함
     pytest.param(lambda: chunk(flags=0, utc_us_start=0), id="utc-unknown"),
     pytest.param(lambda: chunk(flags=0b11, dropped_range=5, dropped_imu=2), id="overflow-flag"),
     pytest.param(lambda: _r(raw_cm=(1, 3000, 1, 3000)), id="raw_cm-bounds"),

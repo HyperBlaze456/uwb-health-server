@@ -1,0 +1,51 @@
+{
+  "code": 0,
+  "code_name": "stored",
+  "len": 286,
+  "header": {
+    "magic": 193,
+    "version": 1,
+    "header_len": 48,
+    "head_boot_id": 1404705926,
+    "chunk_seq": 5,
+    "head_us_start": 417000137,
+    "utc_us_start": 1748855217000137,
+    "geometry_hash": 1562747048,
+    "flags": 1,
+    "n_range": 0,
+    "n_imu_frames": 1,
+    "dropped_range": 0,
+    "dropped_imu_frames": 0,
+    "tag_mask": 1,
+    "status_len": 0,
+    "reserved": 0
+  },
+  "ranges": [],
+  "imu_frames": [
+    {
+      "rx_offset_us": 30500,
+      "tag_mac": "e0:72:a1:ac:a9:10",
+      "tag_boot_id": 2053227474,
+      "link_seq": 1200,
+      "tx_tag_ms": 512093,
+      "link_rssi": -51,
+      "fs": 35,
+      "tag_id": 0,
+      "count": 10,
+      "samples": [
+        {"seq": 65530, "tag_ms": 512000, "flags": 7, "raw": [70, 53, 1678, -2217, -80, -281, -245]},
+        {"seq": 65531, "tag_ms": 512010, "flags": 5, "raw": [256, -146, 2375, -2217, 548, 286, 227]},
+        {"seq": 65532, "tag_ms": 512020, "flags": 5, "raw": [271, 34, 2241, -2221, 483, -384, 190]},
+        {"seq": 65533, "tag_ms": 512030, "flags": 5, "raw": [-234, 145, 2038, -2222, 162, -205, 111]},
+        {"seq": 65534, "tag_ms": 512040, "flags": 5, "raw": [198, -71, 2365, -2221, -69, -355, -125]},
+        {"seq": 65535, "tag_ms": 512050, "flags": 5, "raw": [-65, 166, 2233, -2220, 725, 78, 22]},
+        {"seq": 0, "tag_ms": 512060, "flags": 5, "raw": [-70, 189, 1650, -2221, 414, 128, 162]},
+        {"seq": 1, "tag_ms": 512070, "flags": 5, "raw": [-170, -18, 2217, -2222, -673, 36, -197]},
+        {"seq": 2, "tag_ms": 512080, "flags": 5, "raw": [-141, -152, 2374, -2223, 537, -169, 156]},
+        {"seq": 3, "tag_ms": 512090, "flags": 5, "raw": [-247, -66, 1834, -2220, -491, 134, 236]}
+      ]
+    }
+  ],
+  "status": [],
+  "crc32": "c7d51ec5"
+}

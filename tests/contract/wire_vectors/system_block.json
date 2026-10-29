@@ -1,0 +1,61 @@
+{
+  "code": 0,
+  "code_name": "stored",
+  "len": 212,
+  "header": {
+    "magic": 193,
+    "version": 1,
+    "header_len": 48,
+    "head_boot_id": 3620998328,
+    "chunk_seq": 0,
+    "head_us_start": 412000137,
+    "utc_us_start": 1748855212000137,
+    "geometry_hash": 1562747048,
+    "flags": 1,
+    "n_range": 0,
+    "n_imu_frames": 0,
+    "dropped_range": 0,
+    "dropped_imu_frames": 0,
+    "tag_mask": 0,
+    "status_len": 160,
+    "reserved": 0
+  },
+  "ranges": [],
+  "imu_frames": [],
+  "status": [
+    {
+      "kind": 1,
+      "kind_version": 1,
+      "len": 152,
+      "at_offset_us": 1500,
+      "payload": {
+        "head_mac": "e0:72:a1:ac:a8:58",
+        "tag_count": 1,
+        "slot_ms": 10,
+        "position_dimensions": 3,
+        "flags": 7,
+        "geometry_source": 1,
+        "fs": 35,
+        "imu_acquisition_hz": 100,
+        "imu_transport_hz": 100,
+        "set_members": [
+          "e0:72:a1:ac:9b:04",
+          "e0:72:a1:ac:9c:38",
+          "e0:72:a1:ac:a1:6c",
+          "e0:72:a1:ac:a9:10",
+          "00:00:00:00:00:00"
+        ],
+        "reserved": 0,
+        "anchors": [
+          [0, 0, 1.5, 0],
+          [4.03125, 0, 1.5, 0.0625],
+          [3.9800000190734863, 5.0199999809265137, 0.5, -0.029999999329447746],
+          [0, 4.9699997901916504, 2.2999999523162842, 0]
+        ],
+        "firmware_id": "3f9a1c0e5b7d2468",
+        "geometry_id": "sv-5a1c0e17-2-1"
+      }
+    }
+  ],
+  "crc32": "070ba8ad"
+}

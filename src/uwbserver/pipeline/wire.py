@@ -306,37 +306,33 @@ def _parse(data: bytes) -> _Parsed | Rejection:
             return bad("len")
         imus.append((fh, list(_SAMPLE.iter_unpack(mv[start:pos]))))
 
-    # 48 + 24·n_range + Σ(24 + 21·count) + status_len + 4 = len
-    # wire.md 모호: 7단계 안의 순서. 블록 종류를 몰라도 판정되는 inconsistent(전체 길이, 블록 경계·순서,
-    # 아는 종류의 고정 len)를 먼저 보고, 그것이 모두 맞을 때만 모르는 kind·kind_version을 version으로 줌.
+    # 7.4: 48 + 24·n_range + Σ(24 + 21·count) + status_len + 4 = len
     if end - pos != status_len:
         return bad("header.status_len")
 
+    # 7.5: 블록을 IMU 프레임 뒤에서 CRC 바로 앞까지 차례로. 블록마다 머리가 들어감 → 아는 kind·kind_version
+    # (모르면 version) → kind 오름차순(종류마다 한 번) → len이 그 종류의 고정값 → payload가 들어감.
     blocks = []
     prev_kind = -1
     while pos < end:
         i = len(blocks)
         if end - pos < BLOCK_HEADER_LEN:
-            return bad("header.status_len")  # 블록 길이의 합 ≠ status_len
+            return bad(f"block[{i}]")
         kind, kind_version, blen, at = _BLOCK.unpack_from(data, pos)
+        if kind not in KIND_NAMES:
+            return Rejection(Code.VERSION, 7, f"block[{i}].kind")
+        if (kind, kind_version) not in BLOCK_LEN:
+            return Rejection(Code.VERSION, 7, f"block[{i}].kind_version")
         if kind <= prev_kind:
-            return bad(f"block[{i}].kind")  # kind 오름차순, 종류마다 한 번
+            return bad(f"block[{i}].kind")
+        if blen != BLOCK_LEN[(kind, kind_version)]:
+            return bad(f"block[{i}].len")
         start = pos + BLOCK_HEADER_LEN
         pos = start + blen
         if pos > end:
             return bad(f"block[{i}].len")
         prev_kind = kind
         blocks.append((kind, kind_version, blen, at, data[start:pos]))
-
-    for i, (kind, kind_version, blen, _, _) in enumerate(blocks):
-        want = BLOCK_LEN.get((kind, kind_version))
-        if want is not None and blen != want:
-            return bad(f"block[{i}].len")
-    for i, (kind, kind_version, _, _, _) in enumerate(blocks):
-        if kind not in KIND_NAMES:
-            return Rejection(Code.VERSION, 7, f"block[{i}].kind")
-        if (kind, kind_version) not in BLOCK_LEN:
-            return Rejection(Code.VERSION, 7, f"block[{i}].kind_version")
 
     crc = _U32.unpack_from(data, end)[0]
     return _Parsed(hdr, ranges, imus, blocks, crc)
@@ -353,8 +349,8 @@ def _check_fields(p: _Parsed, server_utc_us: int) -> str | None:
     if head_us < 0:
         return "header.head_us_start"
     if flags & 1:
-        # wire.md 모호: "서버 시각 + 1일 이전"을 미만(<)으로 읽음.
-        if not UTC_MIN_US <= utc_us < server_utc_us + UTC_AHEAD_US:
+        # wire.md: 하한 ≤ 값 ≤ 서버 UTC + 1일, 양 끝 포함
+        if not UTC_MIN_US <= utc_us <= server_utc_us + UTC_AHEAD_US:
             return "header.utc_us_start"
     elif utc_us != 0:
         return "header.utc_us_start"
@@ -397,7 +393,7 @@ def _check_fields(p: _Parsed, server_utc_us: int) -> str | None:
 
 
 def _check_ranges(rows: list[tuple]) -> str | None:
-    # wire.md 모호: "앞 거리 프레임"을 tag_id와 무관하게 바로 앞 프레임으로 읽음(프레임은 도착 순서).
+    # wire.md: "앞 거리 프레임"은 tag_id와 무관하게 묶음 안 모든 거리 프레임(프레임은 도착 순서).
     prev = 0
     for i, (rx, _, _, masks, rf, tid, c0, c1, c2, c3, s0, s1, s2, s3) in enumerate(rows):
         if not prev <= rx < MAX_OFFSET_US:
@@ -516,7 +512,7 @@ def _check_system(v: tuple, header_geometry_hash: int) -> str | None:
     text = _cstr(geometry_id, _GEOMETRY_ID)
     if text is None:
         return "system.geometry_id"
-    # wire.md 모호: CRC-32는 geometry_id 글자들(NUL 채움 제외)에 대해 셈.
+    # wire.md: CRC-32는 geometry_id 글자들(뒤의 NUL 채움 제외)에 대해 셈.
     if zlib.crc32(text) != header_geometry_hash:
         return "header.geometry_hash"
     return None
@@ -556,7 +552,7 @@ def _check_health_anchor(a: tuple) -> str | None:
         return "flags"
     if not flags & 1:
         # seen = 0이면 칸의 나머지 전부 0, 경과 칸만 0xFFFF.
-        # wire.md 모호: "나머지"에 flags의 다른 비트도 넣음(flags 전체 = 0).
+        # wire.md: seen = 0이면 flags를 포함한 칸 전부 0, 경과 칸 둘만 0xFFFF.
         for name, got, want in zip(_ANCHOR_NAMES, a, _ANCHOR_UNSEEN):
             if got != want:
                 return name
@@ -599,8 +595,8 @@ def _nonneg(x: float) -> bool:
 
 
 def _check_survey(v: tuple) -> str | None:
-    # wire.md 모호: "내용" 열에만 있는 조건(solution.ok = 0이면 xyz_m = 0, height_solved = 0이면
-    # solved_height_m = 0)은 검사하지 않음. wire.md가 서버의 검사를 "검사" 열로 정했기 때문.
+    # wire.md 검사 8: "내용" 열에만 적은 조건(solution.ok = 0이면 xyz_m = 0, height_solved = 0이면
+    # solved_height_m = 0)은 검사하지 않음. f32 칸은 검사 열이 "—"여도 모두 유한값이어야 함.
     status, flags, heights_known, reserved = v[:4]
     message, reason = v[6], v[7]
     heights = v[8:12]
@@ -752,14 +748,9 @@ def decode_system(payload: bytes) -> dict:
         "fs": v[6],
         "imu_acquisition_hz": v[7],
         "imu_transport_hz": v[8],
-        "set_members": [
-            None if members[k : k + 6] == _ZERO_MAC else format_mac(members[k : k + 6]) for k in range(0, 30, 6)
-        ],
+        "set_members": [format_mac(members[k : k + 6]) for k in range(0, 30, 6)],  # 빈 칸은 "00:00:00:00:00:00"
         "reserved": v[10],
-        "anchors": [
-            {"x": anchors[k], "y": anchors[k + 1], "z": anchors[k + 2], "range_bias_m": anchors[k + 3]}
-            for k in range(0, 16, 4)
-        ],
+        "anchors": [list(anchors[k : k + 4]) for k in range(0, 16, 4)],  # A0–A3마다 [x, y, z, range_bias_m]
         "firmware_id": v[27].hex(),
         "geometry_id": _text(v[28]),
     }
@@ -842,9 +833,6 @@ def range_to_dict(r: RangeFrame) -> dict:
         "valid_mask": r.valid_mask,
         "rssi_mask": r.rssi_mask,
         "report_flags": r.report_flags,
-        "reported_mask": r.reported_mask,
-        "explicit_anchor_ids": r.explicit_anchor_ids,
-        "configuration_verified": r.configuration_verified,
         "tag_id": r.tag_id,
         "raw_cm": list(r.raw_cm),
         "rssi_dbm": list(r.rssi_dbm),
@@ -867,18 +855,21 @@ def imu_frame_to_dict(f: ImuFrame) -> dict:
 
 
 def chunk_to_dict(chunk: Chunk) -> dict:
-    """{"header", "ranges", "imu_frames", "status": {종류 이름: 필드}, "crc32": "hex8"}.
+    """wire.md "묶음 .json의 형식" 그대로(코드 칸 code·code_name은 부르는 쪽이 붙임).
 
-    status의 각 dict에는 payload 필드에 더해 블록 머리의 kind_version, at_offset_us가 들어감.
+    {"len", "header", "ranges", "imu_frames", "status": [{"kind", "kind_version", "len", "at_offset_us", "payload"}],
+     "crc32": "hex8"}. 이름은 바이트 표의 이름, 표 순서. 펌웨어 시험 벡터의 .json과 같아야 합니다.
     """
     return {
+        "len": len(chunk.data),
         "header": header_to_dict(chunk.header),
         "ranges": [range_to_dict(r) for r in chunk.ranges],
         "imu_frames": [imu_frame_to_dict(f) for f in chunk.imu_frames],
-        "status": {
-            KIND_NAMES[b.kind]: decode_block(b) | {"kind_version": b.kind_version, "at_offset_us": b.at_offset_us}
+        "status": [
+            {"kind": b.kind, "kind_version": b.kind_version, "len": b.len, "at_offset_us": b.at_offset_us,
+             "payload": decode_block(b)}
             for b in chunk.blocks
-        },
+        ],  # fmt: skip
         "crc32": f"{chunk.crc32:08x}",
     }
 
@@ -906,7 +897,7 @@ def split_request(body: bytes, *, max_chunks: int | None = MAX_CHUNKS_PER_REQUES
             raise FramingError(f"record {len(out)}: len {size} > remaining {n - pos}")
         if max_chunks is not None and len(out) >= max_chunks:
             raise FramingError(f"more than {max_chunks} chunks")
-        # wire.md 모호: len = 0인 레코드는 프레이밍 오류가 아님(검사 2에서 inconsistent).
+        # wire.md 검사 1: len ≤ 남은 본문이면 프레이밍은 맞음. len = 0인 레코드는 검사 2에서 inconsistent.
         out.append(bytes(body[pos : pos + size]))
         pos += size
     return out

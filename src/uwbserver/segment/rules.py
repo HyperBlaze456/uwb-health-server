@@ -297,9 +297,7 @@ def installation_from_system(c: ChunkIn) -> InstallationIn | None:
     if c.system_block is None:
         return None
     d = wire.decode_system(c.system_block)
-    anchors = [
-        {"id": i, "xyz_m": [a["x"], a["y"], a["z"]], "bias_m": a["range_bias_m"]} for i, a in enumerate(d["anchors"])
-    ]
+    anchors = [{"id": i, "xyz_m": a[:3], "bias_m": a[3]} for i, a in enumerate(d["anchors"])]  # 칸마다 [x, y, z, bias]
     return InstallationIn(
         device_id=c.device_id,
         geometry_hash=c.geometry_hash,

@@ -1,0 +1,74 @@
+{
+  "code": 0,
+  "code_name": "stored",
+  "len": 334,
+  "header": {
+    "magic": 193,
+    "version": 1,
+    "header_len": 48,
+    "head_boot_id": 3270659597,
+    "chunk_seq": 2,
+    "head_us_start": 414000137,
+    "utc_us_start": 0,
+    "geometry_hash": 1562747048,
+    "flags": 0,
+    "n_range": 2,
+    "n_imu_frames": 1,
+    "dropped_range": 0,
+    "dropped_imu_frames": 0,
+    "tag_mask": 1,
+    "status_len": 0,
+    "reserved": 0
+  },
+  "ranges": [
+    {
+      "rx_offset_us": 4100,
+      "round_seq": 7005,
+      "slot_mask": 15,
+      "valid_mask": 15,
+      "rssi_mask": 0,
+      "report_flags": 63,
+      "tag_id": 0,
+      "raw_cm": [291, 220, 404, 353],
+      "rssi_dbm": [0, 0, 0, 0]
+    },
+    {
+      "rx_offset_us": 14600,
+      "round_seq": 7006,
+      "slot_mask": 15,
+      "valid_mask": 15,
+      "rssi_mask": 0,
+      "report_flags": 63,
+      "tag_id": 0,
+      "raw_cm": [287, 230, 395, 363],
+      "rssi_dbm": [0, 0, 0, 0]
+    }
+  ],
+  "imu_frames": [
+    {
+      "rx_offset_us": 52300,
+      "tag_mac": "e0:72:a1:ac:a9:10",
+      "tag_boot_id": 2053227474,
+      "link_seq": 902,
+      "tx_tag_ms": 81293,
+      "link_rssi": -53,
+      "fs": 35,
+      "tag_id": 0,
+      "count": 10,
+      "samples": [
+        {"seq": 20, "tag_ms": 81200, "flags": 5, "raw": [-149, -90, 2219, -2217, 219, 145, -22]},
+        {"seq": 21, "tag_ms": 81210, "flags": 5, "raw": [284, 74, 1741, -2223, 341, 5, -134]},
+        {"seq": 22, "tag_ms": 81220, "flags": 5, "raw": [128, 44, 1876, -2220, -589, 96, 44]},
+        {"seq": 23, "tag_ms": 81230, "flags": 7, "raw": [-15, -85, 1955, -2220, 560, 45, -60]},
+        {"seq": 24, "tag_ms": 81240, "flags": 5, "raw": [-262, 162, 2071, -2219, 250, -231, 242]},
+        {"seq": 25, "tag_ms": 81250, "flags": 5, "raw": [-234, -139, 2272, -2222, -795, 368, -153]},
+        {"seq": 26, "tag_ms": 81260, "flags": 5, "raw": [125, -167, 1872, -2223, -10, -191, 42]},
+        {"seq": 27, "tag_ms": 81270, "flags": 5, "raw": [-220, -59, 2259, -2223, -634, -157, -39]},
+        {"seq": 28, "tag_ms": 81280, "flags": 5, "raw": [96, -117, 2034, -2223, -282, -74, 224]},
+        {"seq": 29, "tag_ms": 81290, "flags": 5, "raw": [278, 198, 2127, -2222, 844, 301, -125]}
+      ]
+    }
+  ],
+  "status": [],
+  "crc32": "16a29492"
+}

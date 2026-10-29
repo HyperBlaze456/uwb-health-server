@@ -1,0 +1,89 @@
+{
+  "code": 0,
+  "code_name": "stored",
+  "len": 364,
+  "header": {
+    "magic": 193,
+    "version": 1,
+    "header_len": 48,
+    "head_boot_id": 2406180122,
+    "chunk_seq": 1003,
+    "head_us_start": 1415000137,
+    "utc_us_start": 1748856215000137,
+    "geometry_hash": 1562747048,
+    "flags": 1,
+    "n_range": 0,
+    "n_imu_frames": 0,
+    "dropped_range": 0,
+    "dropped_imu_frames": 0,
+    "tag_mask": 0,
+    "status_len": 312,
+    "reserved": 0
+  },
+  "ranges": [],
+  "imu_frames": [],
+  "status": [
+    {
+      "kind": 3,
+      "kind_version": 1,
+      "len": 304,
+      "at_offset_us": 730000,
+      "payload": {
+        "status": 1,
+        "flags": 37,
+        "heights_known": 1,
+        "reserved": 0,
+        "survey_id": 2,
+        "revision": 1,
+        "message": "ok",
+        "solution_reason": "ok",
+        "heights_m": [1.5, 0, 0, 0],
+        "measurements": [
+          [
+            {"median_cm": 0, "n": 0, "mad_cm": 0},
+            {"median_cm": 404, "n": 48, "mad_cm": 1},
+            {"median_cm": 646, "n": 47, "mad_cm": 3},
+            {"median_cm": 503, "n": 50, "mad_cm": 2}
+          ],
+          [
+            {"median_cm": 402, "n": 49, "mad_cm": 1},
+            {"median_cm": 0, "n": 0, "mad_cm": 0},
+            {"median_cm": 514, "n": 46, "mad_cm": 2},
+            {"median_cm": 646, "n": 45, "mad_cm": 2}
+          ],
+          [
+            {"median_cm": 650, "n": 47, "mad_cm": 3},
+            {"median_cm": 510, "n": 48, "mad_cm": 2},
+            {"median_cm": 0, "n": 0, "mad_cm": 0},
+            {"median_cm": 436, "n": 50, "mad_cm": 1}
+          ],
+          [
+            {"median_cm": 503, "n": 50, "mad_cm": 2},
+            {"median_cm": 644, "n": 44, "mad_cm": 2},
+            {"median_cm": 438, "n": 49, "mad_cm": 1},
+            {"median_cm": 0, "n": 0, "mad_cm": 0}
+          ]
+        ],
+        "distances_m": [
+          [0, 4.0300002098083496, 6.4800000190734863, 5.0300002098083496],
+          [4.0300002098083496, 0, 5.119999885559082, 6.4499998092651367],
+          [6.4800000190734863, 5.119999885559082, 0, 4.369999885559082],
+          [5.0300002098083496, 6.4499998092651367, 4.369999885559082, 0]
+        ],
+        "max_asymmetry_m": 0.039999999105930328,
+        "max_mad_m": 0.029999999329447746,
+        "xyz_m": [
+          [0, 0, 1.5],
+          [4.0300002098083496, 0, 1.5],
+          [3.9800000190734863, 5.0199999809265137, 0.5],
+          [0, 4.9699997901916504, 2.2999999523162842]
+        ],
+        "fit_rms_m": 0.012000000104308128,
+        "flatness_m": 0.89999997615814209,
+        "solved_height_m": 1.5,
+        "height_span_m": 1.7999999523162842
+      }
+    }
+  ],
+  "crc32": "5b2e4a50"
+}

@@ -1,0 +1,50 @@
+{
+  "code": 0,
+  "code_name": "stored",
+  "len": 100,
+  "header": {
+    "magic": 193,
+    "version": 1,
+    "header_len": 48,
+    "head_boot_id": 1041915082,
+    "chunk_seq": 4,
+    "head_us_start": 416000137,
+    "utc_us_start": 1748855216000137,
+    "geometry_hash": 1562747048,
+    "flags": 1,
+    "n_range": 2,
+    "n_imu_frames": 0,
+    "dropped_range": 0,
+    "dropped_imu_frames": 0,
+    "tag_mask": 1,
+    "status_len": 0,
+    "reserved": 0
+  },
+  "ranges": [
+    {
+      "rx_offset_us": 9000,
+      "round_seq": 811,
+      "slot_mask": 7,
+      "valid_mask": 1,
+      "rssi_mask": 1,
+      "report_flags": 39,
+      "tag_id": 0,
+      "raw_cm": [250, 32767, -32767, 0],
+      "rssi_dbm": [-71, 0, 0, 0]
+    },
+    {
+      "rx_offset_us": 19500,
+      "round_seq": 812,
+      "slot_mask": 15,
+      "valid_mask": 7,
+      "rssi_mask": 0,
+      "report_flags": 63,
+      "tag_id": 0,
+      "raw_cm": [251, 307, 2999, 3001],
+      "rssi_dbm": [0, 0, 0, 0]
+    }
+  ],
+  "imu_frames": [],
+  "status": [],
+  "crc32": "36a55a02"
+}

@@ -1,0 +1,122 @@
+{
+  "code": 0,
+  "code_name": "stored",
+  "len": 252,
+  "header": {
+    "magic": 193,
+    "version": 1,
+    "header_len": 48,
+    "head_boot_id": 3230822853,
+    "chunk_seq": 1002,
+    "head_us_start": 1414000137,
+    "utc_us_start": 1748856214000137,
+    "geometry_hash": 1562747048,
+    "flags": 1,
+    "n_range": 0,
+    "n_imu_frames": 0,
+    "dropped_range": 0,
+    "dropped_imu_frames": 0,
+    "tag_mask": 0,
+    "status_len": 200,
+    "reserved": 0
+  },
+  "ranges": [],
+  "imu_frames": [],
+  "status": [
+    {
+      "kind": 2,
+      "kind_version": 1,
+      "len": 192,
+      "at_offset_us": 500000,
+      "payload": {
+        "flags": 211,
+        "wifi_disconnect_reason": 8,
+        "tag_count": 1,
+        "buffer_used": 3,
+        "buffer_capacity": 830,
+        "counters": {
+          "range_count": 571234,
+          "invalid_range": 12,
+          "invalid_imu": 3,
+          "duplicate_rounds": 41,
+          "duplicate_imu": 7,
+          "uart_overflow": 1,
+          "at_errors": 2,
+          "at_timeouts": 4,
+          "imu_link_frames": 57123,
+          "imu_link_samples": 571230,
+          "imu_link_gaps": 9,
+          "imu_link_duplicates": 5,
+          "imu_link_rejected": 6,
+          "wifi_disconnects": 2,
+          "survey_rounds": 3,
+          "link_send_failures": 11,
+          "link_rejected": 8,
+          "link_foreign": 13,
+          "link_old_version": 10,
+          "chunks_dropped_overflow": 14,
+          "chunks_rejected": 15,
+          "upload_failures": 16
+        },
+        "range_age_ms": 11,
+        "imu_age_ms": 37,
+        "anchors": [
+          {
+            "flags": 7,
+            "state": 0,
+            "rssi": -52,
+            "valid_mask": 15,
+            "boot_id": 206384785,
+            "range_count": 570880,
+            "round_seq": 50123,
+            "age_ms": 210,
+            "range_age_ms": 12
+          },
+          {
+            "flags": 7,
+            "state": 0,
+            "rssi": -61,
+            "valid_mask": 7,
+            "boot_id": 2650912675,
+            "range_count": 570002,
+            "round_seq": 50122,
+            "age_ms": 640,
+            "range_age_ms": 13
+          },
+          {
+            "flags": 0,
+            "state": 0,
+            "rssi": 0,
+            "valid_mask": 0,
+            "boot_id": 0,
+            "range_count": 0,
+            "round_seq": 0,
+            "age_ms": 65535,
+            "range_age_ms": 65535
+          }
+        ],
+        "tags": [
+          {
+            "flags": 3,
+            "link_rssi": -50,
+            "imu_age_ms": 37,
+            "range_count": 570911,
+            "round_seq": 50123,
+            "range_age_ms": 11,
+            "reserved": 0
+          },
+          {
+            "flags": 0,
+            "link_rssi": 0,
+            "imu_age_ms": 65535,
+            "range_count": 0,
+            "round_seq": 0,
+            "range_age_ms": 65535,
+            "reserved": 0
+          }
+        ]
+      }
+    }
+  ],
+  "crc32": "7eb89fc8"
+}
