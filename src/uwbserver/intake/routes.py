@@ -71,7 +71,8 @@ def _block_out(row: dict, decode) -> dict:
 def device_health(device_id: str, user: CurrentUser, conn: Conn, span: SpanParams, p: PageParams) -> list[dict]:
     """1분 기록(최근 30일), 풀어서."""
     check_device(conn, user, device_id)
-    rows = intake_store.health_rows(conn, device_id, span.start, span.end, p.limit)
+    subject = None if user.admin else user.subject_id
+    rows = intake_store.health_rows(conn, device_id, span.start, span.end, p.limit, subject)
     return [_block_out(r, wire.decode_health) for r in rows]
 
 

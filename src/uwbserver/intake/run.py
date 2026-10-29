@@ -180,7 +180,10 @@ def reindex(
     repair_tail=True는 intake가 받기를 열기 전에만 씁니다(다른 작성자가 없을 때만 꼬리를 자를 수 있음).
     """
     stats = ReindexStats()
+    purged = store.purged_paths(conn)  # 삭제가 행을 지우고 파일만 남은 경우: 다시 넣으면 구간에 두 번 셈
     for path in files.list_files("raw"):
+        if path in purged:
+            continue
         name = files.parse_raw_path(path)
         if device_id and name.device_id != device_id:
             continue

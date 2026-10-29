@@ -141,9 +141,19 @@ def revive_stale(conn: psycopg.Connection, *, now: datetime, stale_after_s: floa
 
 
 def cleanup(conn: psycopg.Connection, *, now: datetime) -> int:
-    """30일 지난 done 작업 삭제. 원본이 아니므로 PURGE_ENABLED와 무관(PL-2)."""
+    """30일 지난 done 작업 삭제. 원본이 아니므로 PURGE_ENABLED와 무관(PL-2).
+
+    구간마다 가장 최근 analysis 작업은 남깁니다. AR-6이 "가장 최근 analysis 작업이 failed가 아님"을 보므로,
+    그것을 지우면 그 앞의 옛 failed 작업이 가장 최근이 되어 원본을 영영 지우지 못하게 됩니다.
+    """
     cur = conn.execute(
-        "DELETE FROM pipeline.job WHERE state = 'done' AND finished_at < %s",
+        """
+        DELETE FROM pipeline.job j
+        WHERE j.state = 'done' AND j.finished_at < %s
+          AND NOT (j.kind = 'analysis'
+                   AND j.id = (SELECT max(x.id) FROM pipeline.job x
+                               WHERE x.kind = 'analysis' AND x.segment_id = j.segment_id))
+        """,
         (now - timedelta(days=DONE_KEEP_DAYS),),
     )
     return cur.rowcount

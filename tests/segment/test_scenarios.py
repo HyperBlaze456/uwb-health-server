@@ -223,3 +223,16 @@ def test_feeder_smoke(env, device):
     f.step()
     assert env.scalar("SELECT count(*) FROM segment.segment") == 1
     assert segment_jobs.get_cursor(env.conn("core")) == env.scalar("SELECT max(id) FROM intake.chunk")
+
+
+def test_bad_chunk_is_skipped_not_blocking(env, device, capsys):
+    """검토 8: 처리하다 예외가 나는 묶음 하나가 모든 장치의 구간 잇기를 멈추면 안 됨. 그 묶음만 건너뛰고 알림."""
+    f = Feeder(env, {MAC: device}, step_every_s=None)
+    f.send(fake_head.scenario("normal", duration_s=30))
+    # seq가 크게 뛴 묶음: n_missing_chunks(int4)가 넘쳐 DB 오류가 남
+    env.q("UPDATE intake.chunk SET chunk_seq = 4000000000 WHERE chunk_seq = 20")
+    stats = f.step()
+    assert stats.skipped == 1 and stats.chunks == env.scalar("SELECT count(*) FROM intake.chunk")
+    assert segment_jobs.get_cursor(env.conn("core")) == env.scalar("SELECT max(id) FROM intake.chunk")
+    assert env.scalar("SELECT sum(n_chunks) FROM segment.segment") == stats.chunks - 1
+    assert '"segment_chunk_skipped"' in capsys.readouterr().out

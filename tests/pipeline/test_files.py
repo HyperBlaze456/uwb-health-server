@@ -96,3 +96,28 @@ def test_write_atomic(root):
     files.write_atomic(p, b"x" * 10)
     assert files.size(p) == 10
     assert not list(files.resolve(p).parent.glob(".*tmp*"))
+
+
+def test_rollback_does_not_cut_someone_elses_bytes(root):
+    """검토 9: 내가 쓴 뒤 다른 작성자가 이어 썼으면(장치 잠금이 풀린 사이) 되돌리기가 남의 레코드를 자르지 않음."""
+    c = _chunks(2)
+    p = files.raw_path("head-x", 1, US)
+    a = files.Appender()
+    a.append(p, files.raw_record_head(len(c[0]), US), c[0])
+    with open(files.resolve(p), "ab") as other:
+        other.write(files.raw_record_head(len(c[1]), US) + c[1])
+    a.rollback()
+    a.close()
+    recs, _ = files.scan_raw(p)
+    assert [r.data for r in recs] == c
+
+
+def test_rejected_scan_skips_broken_record(root):
+    """검토 12: rejected 파일 중간의 깨진 레코드 뒤의 레코드도 읽음."""
+    p = files.rejected_path("head-x", US)
+    good = lambda d, code: files.rejected_record_head(len(d), US, code, 6) + d  # noqa: E731
+    torn = good(b"x" * 100, 2)[:40]
+    files.resolve(p).parent.mkdir(parents=True)
+    files.resolve(p).write_bytes(good(b"a" * 60, 2) + torn + good(b"b" * 70, 3))
+    recs, _ = files.scan_rejected(p)
+    assert [(r.code, r.data) for r in recs] == [(2, b"a" * 60), (3, b"b" * 70)]

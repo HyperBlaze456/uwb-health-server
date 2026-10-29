@@ -240,3 +240,16 @@ def test_reindex_after_db_only_restart(env, device, intake_client):
     stats = intake_run.reindex_if_db_restarted(conn, state)
     assert stats is not None and stats.inserted == n - 50
     assert env.scalar("SELECT count(*) FROM intake.chunk") == n
+
+
+def test_reindex_skips_files_purge_processed(env, device, intake_client):
+    """검토 10: 삭제가 행을 지우고 파일만 남은 경우, 재색인이 그 행을 다시 넣어 구간에 두 번 세지 않음."""
+    _post_all(env, intake_client, device.token, fake_head.scenario("normal", duration_s=20))
+    path = env.one("SELECT raw_path FROM intake.chunk LIMIT 1")["raw_path"]
+    n = env.scalar("SELECT count(*) FROM intake.chunk")
+    env.q("DELETE FROM intake.health; DELETE FROM intake.system")
+    env.q("DELETE FROM intake.chunk")
+    env.q("INSERT INTO archive.purged VALUES (%s, %s, %s, now())", (path, n, n))
+    assert intake_run.reindex(env.conn("intake")).inserted == 0
+    env.q("DELETE FROM archive.purged")
+    assert intake_run.reindex(env.conn("intake")).inserted == n

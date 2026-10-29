@@ -1,5 +1,7 @@
 """M5 앱 API (AP, RG, TL-6). SPEC 11절 M5 시험 1–5."""
 
+from datetime import datetime
+
 
 import pytest
 from fastapi.testclient import TestClient
@@ -209,3 +211,23 @@ def test_admin_tool_same_store(env, capsys):
     finally:
         os.environ.pop("ADMIN_PASSWORD")
 
+
+
+def test_member_sees_device_health_only_in_own_wear(env, api, admin, people, device, intake_client):
+    """검토 11(AP-2): 같은 장치를 B가 찬 동안의 health는 A에게 보이지 않음."""
+    for r in fake_head.scenario("normal", duration_s=250):
+        env.clock.set(r.at_us)
+        intake_client.post("/d/v1/chunks", content=r.body, headers=auth(device.token))
+    at = env.q("SELECT at FROM intake.health ORDER BY at")
+    assert len(at) >= 4
+    split = at[2]["at"]  # 앞 두 기록은 A, 그 뒤는 B
+    api.post("/v1/wear", json={"subject_id": people["A"], "device_id": device.device.id,
+                               "started_at": "2026-10-25T00:00:00Z", "ended_at": split.isoformat()}, headers=admin)
+    api.post("/v1/wear", json={"subject_id": people["B"], "device_id": device.device.id,
+                               "started_at": split.isoformat()}, headers=admin)
+    q = f"/v1/devices/{device.device.id}/health?from=2026-10-25T00:00:00Z"
+    assert len(api.get(q, headers=people["a"]).json()) == 2
+    assert len(api.get(q, headers=people["b"]).json()) == len(at) - 2
+    assert len(api.get(q, headers=admin).json()) == len(at)
+    a_detail = api.get(f"/v1/devices/{device.device.id}", headers=people["a"]).json()
+    assert datetime.fromisoformat(a_detail["health"]["at"]) < split  # A에게는 자기 착용 기간의 최신 기록

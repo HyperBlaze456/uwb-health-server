@@ -75,6 +75,11 @@ def existing_keys(conn: psycopg.Connection, device_id: str, keys: Sequence[tuple
     return {(r["head_boot_id"], r["chunk_seq"]) for r in rows}
 
 
+def purged_paths(conn: psycopg.Connection) -> set[str]:
+    """30일 삭제가 행을 지운 raw 파일(archive.purged). 재색인이 이 파일의 행을 다시 넣지 않게."""
+    return {r["path"] for r in conn.execute("SELECT path FROM archive.purged").fetchall()}
+
+
 def max_received_at(conn: psycopg.Connection) -> datetime | None:
     """IN-9의 기준."""
     return conn.execute("SELECT max(received_at) AS m FROM intake.chunk").fetchone()["m"]
@@ -83,14 +88,23 @@ def max_received_at(conn: psycopg.Connection) -> datetime | None:
 # ---------------------------------------------------------------- 앱 조회 (C3, 8절)
 
 
-def health_rows(conn: psycopg.Connection, device_id: str, start: datetime, end: datetime, limit: int) -> list[dict]:
+def health_rows(
+    conn: psycopg.Connection, device_id: str, start: datetime, end: datetime, limit: int,
+    subject_id: int | None = None,
+) -> list[dict]:  # fmt: skip
+    """health 블록 행. subject_id가 있으면(member) 그 착용자의 착용 기간 안의 것만(AP-2: 같은 장치를 다른 사람이
+    찬 동안의 기록은 보이지 않음)."""
     return conn.execute(
         """
-        SELECT head_boot_id, chunk_seq, at, block FROM intake.health
-        WHERE device_id = %s AND at >= %s AND at < %s
-        ORDER BY at DESC LIMIT %s
+        SELECT h.head_boot_id, h.chunk_seq, h.at, h.block FROM intake.health h
+        WHERE h.device_id = %(dev)s AND h.at >= %(start)s AND h.at < %(end)s
+          AND (%(subj)s::bigint IS NULL OR EXISTS (
+                SELECT 1 FROM registry.wear w
+                WHERE w.subject_id = %(subj)s AND w.device_id = h.device_id
+                  AND w.started_at <= h.at AND (w.ended_at IS NULL OR h.at < w.ended_at)))
+        ORDER BY h.at DESC LIMIT %(limit)s
         """,
-        (device_id, start, end, limit),
+        {"dev": device_id, "start": start, "end": end, "subj": subject_id, "limit": limit},
     ).fetchall()
 
 

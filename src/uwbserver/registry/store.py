@@ -67,13 +67,21 @@ def list_devices(conn: psycopg.Connection, device_ids: list[str] | None = None) 
     ).fetchall()
 
 
-def latest_blocks(conn: psycopg.Connection, device_id: str) -> dict[str, dict | None]:
-    """최신 system·health 블록(장치 상세, 8절)."""
+def latest_blocks(conn: psycopg.Connection, device_id: str, subject_id: int | None = None) -> dict[str, dict | None]:
+    """최신 system·health 블록(장치 상세, 8절). subject_id가 있으면(member) 그 착용 기간 안의 것만."""
     out: dict[str, dict | None] = {}
     for kind in ("system", "health"):
         out[kind] = conn.execute(
-            f"SELECT head_boot_id, chunk_seq, at, block FROM intake.{kind} WHERE device_id = %s ORDER BY at DESC LIMIT 1",
-            (device_id,),
+            f"""
+            SELECT b.head_boot_id, b.chunk_seq, b.at, b.block FROM intake.{kind} b
+            WHERE b.device_id = %(dev)s
+              AND (%(subj)s::bigint IS NULL OR EXISTS (
+                    SELECT 1 FROM registry.wear w
+                    WHERE w.subject_id = %(subj)s AND w.device_id = b.device_id
+                      AND w.started_at <= b.at AND (w.ended_at IS NULL OR b.at < w.ended_at)))
+            ORDER BY b.at DESC LIMIT 1
+            """,
+            {"dev": device_id, "subj": subject_id},
         ).fetchone()
     return out
 

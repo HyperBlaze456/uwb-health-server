@@ -209,18 +209,48 @@ def scan_raw(path: str, garbage: list[tuple[int, int]] | None = None) -> tuple[l
     return out, end
 
 
+_REJECTED_CODES = frozenset({*range(2, 10), 255})
+_MAX_BODY = 131_072
+
+
+def _rejected_head(buf: bytes, pos: int) -> tuple[int, int, int, int] | None:
+    if pos + REJECTED_HEAD.size > len(buf):
+        return None
+    n, us, code, check, zero = REJECTED_HEAD.unpack_from(buf, pos)
+    if zero != 0 or code not in _REJECTED_CODES or not 1 <= check <= 9 or n > _MAX_BODY or us <= 0:
+        return None
+    if pos + REJECTED_HEAD.size + n > len(buf):
+        return None
+    return n, us, code, check
+
+
+def _rejected_ok(buf: bytes, pos: int) -> tuple[int, int, int, int] | None:
+    """pos에 그럴듯한 rejected 레코드가 있으면 (len, us, code, check). 거절한 묶음은 CRC가 틀릴 수 있어
+    머리 필드(코드, 검사 단계, 0인 칸, 길이)와, 바로 뒤가 파일 끝이거나 또 하나의 그럴듯한 머리인지로 봅니다."""
+    head = _rejected_head(buf, pos)
+    if head is None:
+        return None
+    nxt = pos + REJECTED_HEAD.size + head[0]
+    if nxt != len(buf) and _rejected_head(buf, nxt) is None:
+        return None
+    return head
+
+
 def scan_rejected(path: str) -> tuple[list[RejectedRecord], int]:
+    """rejected 파일을 읽습니다. 머리가 깨진 곳은 다음 그럴듯한 머리까지 건너뜀(진단용 자료)."""
     buf = resolve(path).read_bytes()
     out: list[RejectedRecord] = []
-    pos = 0
+    pos = end = 0
     while pos + REJECTED_HEAD.size <= len(buf):
-        n, us, code, check, _ = REJECTED_HEAD.unpack_from(buf, pos)
+        head = _rejected_ok(buf, pos)
+        if head is None:
+            pos += 1
+            continue
+        n, us, code, check = head
         start = pos + REJECTED_HEAD.size
-        if start + n > len(buf):
-            break
         out.append(RejectedRecord(start, us, code, check, buf[start : start + n]))
-        pos = start + n
-    return out, pos
+        pos = end = start + n
+    return out, end
 
 
 def truncate_torn_tail(path: str, valid_end: int) -> int:
@@ -341,9 +371,13 @@ class Appender:
             _fsync_dir(d)
 
     def rollback(self) -> None:
+        """이번에 쓴 바이트를 잘라 냅니다. 파일 끝이 내가 쓴 끝과 다르면(DB 연결이 끊겨 장치 잠금이 풀린 사이
+        다른 작업자가 이어 썼음) 남의 레코드를 자를 수 있으므로 자르지 않습니다. 남은 바이트는 확인 응답을
+        받지 않은 레코드라 읽을 때 중복이나 건너뛸 구간으로 처리됩니다."""
         for path, fd in self._fds.items():
             try:
-                os.ftruncate(fd, self._start[path])
+                if os.fstat(fd).st_size == self._pos[path]:
+                    os.ftruncate(fd, self._start[path])
             except OSError:
                 pass
 

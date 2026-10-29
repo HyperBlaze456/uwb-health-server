@@ -287,7 +287,7 @@ def list_devices(user: CurrentUser, conn: Conn) -> list[DeviceOut]:
 def get_device(device_id: str, user: CurrentUser, conn: Conn) -> DeviceDetailOut:
     check_device(conn, user, device_id)
     (row,) = store.list_devices(conn, [device_id])
-    blocks = store.latest_blocks(conn, device_id)
+    blocks = store.latest_blocks(conn, device_id, None if user.admin else user.subject_id)
     decoded = {}
     for kind, b in blocks.items():
         decoded[kind] = None if b is None else {

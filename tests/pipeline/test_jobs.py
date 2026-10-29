@@ -70,15 +70,25 @@ def test_defer_keeps_attempts(env):
 
 
 def test_cleanup_only_old_done(env):
+    """30일 지난 done만 지우되, 구간마다 가장 최근 analysis 작업은 남김(AR-6이 봄)."""
     c = _core(env)
     now = clock.now()
-    for seg in (1, 2):
+    # 구간 1: failed 뒤에 done. 구간 2: done 둘. 구간 3: 대기
+    jobs.enqueue_analysis(c, 1, now=now)
+    jobs.fail(c, jobs.claim(c, ("analysis",), worker="w", now=now).id, "x", now=now)
+    for seg in (1, 2, 2):
         jobs.enqueue_analysis(c, seg, now=now)
         jobs.finish(c, jobs.claim(c, ("analysis",), worker="w", now=now).id, now=now)
     jobs.enqueue_analysis(c, 3, now=now)
+    jobs.enqueue_archive(c, 9, now=now)
+    jobs.finish(c, jobs.claim(c, ("archive",), worker="w", now=now).id, now=now)
     assert jobs.cleanup(c, now=now + timedelta(days=29)) == 0
-    assert jobs.cleanup(c, now=now + timedelta(days=31)) == 2
-    assert env.scalar("SELECT count(*) FROM pipeline.job") == 1
+    assert jobs.cleanup(c, now=now + timedelta(days=31)) == 2  # 구간 2의 옛 done 하나, archive done 하나
+    left = env.q("SELECT segment_id, state FROM pipeline.job WHERE kind = 'analysis' ORDER BY id")
+    assert left == [
+        {"segment_id": 1, "state": "failed"}, {"segment_id": 1, "state": "done"},
+        {"segment_id": 2, "state": "done"}, {"segment_id": 3, "state": "queued"},
+    ]
 
 
 def test_cursor(env):

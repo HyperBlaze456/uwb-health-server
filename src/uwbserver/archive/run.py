@@ -19,6 +19,7 @@ from uwbserver.pipeline.jobs import Job
 def handle(conn: psycopg.Connection, job: Job) -> str:
     now = clock.now()
     written: list[str] = []
+    committing = False
     try:
         with conn.transaction():
             run = store.run_info(conn, job.run_id)
@@ -32,9 +33,15 @@ def handle(conn: psycopg.Connection, job: Job) -> str:
             n_ranges, n_chunks = _cut(conn, run, written, now)
             store.insert_cut(conn, run["id"], n_ranges, n_chunks, now)
             jobs.finish(conn, job.id, now=now)
+            committing = True  # 이 블록을 나가며 COMMIT
     except (OSError, psycopg.Error) as e:
-        for path in written:  # 행이 없는 archive 파일을 남기지 않음
-            files.delete(path)
+        # COMMIT 전에 실패했으면 행이 없는 파일이므로 지움. COMMIT 중의 실패는 서버가 커밋했을 수 있으므로
+        # 영구 원본 파일을 지우지 않음(행이 없게 남으면 다시 시도가 같은 경로에 덮어쓰거나 verify_archive --reindex가 받아들임).
+        if not committing:
+            for path in written:
+                files.delete(path)
+        else:
+            log.error("archive_commit_uncertain", job=job.id, run=job.run_id, files=written)
         with conn.transaction():
             state = jobs.retry_or_fail(conn, job, f"archive_{type(e).__name__}: {e}", now=clock.now())
         log.warning("archive_retry", job=job.id, run=job.run_id, state=state, error=str(e))

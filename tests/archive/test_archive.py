@@ -215,3 +215,30 @@ def test_reanalyze_api_409_without_input(env, device):
     env.q("DELETE FROM intake.chunk")
     assert not segment_store.has_input(env.conn("api"), seg)
 
+
+
+def test_archive_files_kept_when_commit_uncertain(env, device, monkeypatch):
+    """검토 5: COMMIT 중에 연결이 끊기면 서버가 커밋했을 수 있음. 영구 원본 파일을 지우면 안 됨."""
+    from uwbserver.archive import store as archive_store
+
+    closed_segment(env, device)
+    core = make_core()
+    assert run_jobs(env, core, ("analysis",)) == ["done"]
+    real = archive_store.insert_cut
+
+    def cut_then_fail_on_commit(conn, *a, **k):
+        real(conn, *a, **k)
+        # 커밋 때 깨지는 지연 제약을 하나 만들어 COMMIT 실패를 흉내 냄
+        conn.execute("CREATE TEMP TABLE IF NOT EXISTS t_commit_fail (x int UNIQUE DEFERRABLE INITIALLY DEFERRED)")
+        conn.execute("INSERT INTO t_commit_fail VALUES (1), (1)")
+
+    monkeypatch.setattr(archive_store, "insert_cut", cut_then_fail_on_commit)
+    assert run_jobs(env, core, ("archive",), limit=1) == ["retry_queued"]
+    monkeypatch.undo()
+    written = list((env.data_root / "archive").rglob("*.bin"))
+    assert written, "COMMIT 중 실패에서도 파일이 남아야 함"
+    assert env.scalar("SELECT count(*) FROM archive.range") == 0  # 이 흉내에서는 실제로 커밋되지 않음
+    # 다시 시도하면 같은 경로에 덮어쓰고 행을 넣음
+    env.clock.advance(3 * 60)
+    assert run_jobs(env, core, ("archive",)) == ["done"]
+    assert sorted(files.resolve(r["path"]) for r in env.q("SELECT path FROM archive.range")) == sorted(written)

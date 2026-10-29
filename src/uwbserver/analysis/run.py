@@ -166,6 +166,7 @@ def _store_done(
 ) -> str:
     run_id = run["id"]
     written: list[str] = []
+    committing = False
     t_files = time.perf_counter()
     try:
         result_path = files.result_path(run_id)
@@ -204,10 +205,12 @@ def _store_done(
                 t["bout_id"] = by_idx[t["idx"]]
             store.copy_trajectories(conn, traj_rows)
             _finish_and_follow(conn, job, run_id, seg)
+            committing = True  # 이 블록을 나가며 COMMIT
         db_ms = round((time.perf_counter() - t_db) * 1000, 1)
     except (OSError, psycopg.Error) as e:
-        for path in written:
-            files.delete(path)
+        if not committing:  # COMMIT 중의 실패는 run 행이 있을 수 있으므로 파일을 남김
+            for path in written:
+                files.delete(path)
         return _retry(conn, job, f"store_{type(e).__name__}: {e}")
 
     log.info(

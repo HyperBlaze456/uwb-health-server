@@ -216,7 +216,7 @@ volumes: {certs: {}, pgdata: {}}
 
 | 역할 | 할 수 있는 것 |
 |---|---|
-| `intake_rw` | `registry.device` 읽기, `intake.*` 읽기·INSERT. 커밋은 디스크를 기다리지 않음(`synchronous_commit = off`) |
+| `intake_rw` | `registry.device` 읽기, `intake.*` 읽기·INSERT, `archive.purged` 읽기(재색인이 삭제한 파일을 건너뜀). 커밋은 디스크를 기다리지 않음(`synchronous_commit = off`) |
 | `core_rw` | 전부 읽기. `segment.*` INSERT·UPDATE, `analysis.*` INSERT(궤적 행만 DELETE), `archive.*` INSERT, `pipeline.job` INSERT·UPDATE·DELETE, `pipeline.cursor` UPDATE, `intake.chunk`·`health`·`system`·`rejected` DELETE(30일 삭제만) |
 | `api_rw` | 전부 읽기. `registry.*` INSERT·UPDATE, `registry.app_token` DELETE, `pipeline.job` INSERT |
 
@@ -435,7 +435,7 @@ volumes: {certs: {}, pgdata: {}}
 ### 6.7 앱 API (AP)
 
 - **AP-1** 8절의 엔드포인트를 FastAPI로 만들고 OpenAPI를 냅니다. 앱 팀은 그것으로 클라이언트를 만듭니다.
-- **AP-2 권한.** `member`는 자기 착용자와, 그 착용 기간에 귀속된 구간·걷기 구간만 봅니다. `admin`은 전부입니다. 남의 것을 요청하면 404입니다(있는지 알리지 않음). admin 전용 엔드포인트를 `member`가 부르면 403입니다. 장치는 자기 착용자가 찬 적 있는 것만 보입니다.
+- **AP-2 권한.** `member`는 자기 착용자와, 그 착용 기간에 귀속된 구간·걷기 구간만 봅니다. `admin`은 전부입니다. 남의 것을 요청하면 404입니다(있는지 알리지 않음). admin 전용 엔드포인트를 `member`가 부르면 403입니다. 장치는 자기 착용자가 찬 적 있는 것만 보이고, 그 장치의 health·system 블록도 자기 착용 기간 안의 것만 보입니다(같은 장치를 다른 사람이 찬 동안의 기록은 보이지 않음).
 - **AP-3 상태 블록 풀기.** health·system·survey 조회는 `block` 바이트를 `pipeline/wire.py`로 풀어 wire.md의 필드 이름 그대로 JSON으로 줍니다.
 - **AP-4 궤적 읽기.** TRJ1 파일의 머리를 읽고, 채널마다 시작 위치 `24 + 4n·k`에서 `rate`에 맞게 건너뛰며 읽습니다(25 Hz = 4개마다 1개). 해석이나 압축 해제는 하지 않습니다. 캐시가 지워졌으면 404입니다.
 - **AP-5 쓰기 뒤 작업.** api가 넣는 작업은 재분석(`analysis`) 하나입니다. 착용 기록을 고쳐도 1단계에서는 작업을 넣지 않습니다(귀속은 조회 때 정해지므로).
@@ -1062,6 +1062,8 @@ GRANT USAGE ON SCHEMA registry, intake TO intake_rw;
 GRANT SELECT ON registry.device TO intake_rw;
 GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA intake TO intake_rw;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA intake TO intake_rw;
+GRANT USAGE ON SCHEMA archive TO intake_rw;
+GRANT SELECT ON archive.purged TO intake_rw;                       -- 재색인이 삭제가 처리한 파일을 건너뜀
 
 -- core: 전부 읽기. segment·analysis·archive·pipeline 쓰기. 결과와 영구 원본은 추가만.
 GRANT USAGE ON SCHEMA pipeline, registry, intake, segment, analysis, archive TO core_rw;

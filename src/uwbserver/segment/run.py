@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 import psycopg
 
-from uwbserver.pipeline import clock, jobs, log, settings
+from uwbserver.pipeline import alert, clock, jobs, log, settings
 from uwbserver.segment import rules, store
 from uwbserver.segment.rules import ChunkIn, Seg, SegTag, Side
 
@@ -21,6 +21,7 @@ class StepStats:
     chunks: int = 0
     created: int = 0
     closed: int = 0
+    skipped: int = 0  # 처리하다 실패해 건너뛴 묶음(알림을 보냄)
 
 
 def rule_settings() -> rules.Settings:
@@ -120,22 +121,51 @@ class _Batch:
             self._remember(seg)
 
 
+def _batch(conn: psycopg.Connection, s: rules.Settings, now: datetime, stats: StepStats, *, careful: bool) -> int:
+    """묶음 최대 1000개를 한 트랜잭션에. careful이면 묶음마다 savepoint를 두고, 실패한 묶음만 건너뜀."""
+    with conn.transaction():
+        cursor = jobs.get_cursor(conn, lock=True)
+        chunks = store.load_chunks(conn, cursor, BATCH)
+        batch = _Batch(conn, s, now, stats)
+        for c in chunks:
+            if not careful:
+                batch.add(c)
+                continue
+            try:
+                with conn.transaction():  # savepoint
+                    batch.add(c)
+            except psycopg.OperationalError:
+                raise
+            except Exception as e:  # noqa: BLE001 - 묶음 하나 때문에 모든 장치의 구간 잇기가 멈추지 않게
+                batch.latest.clear()
+                batch.tags.clear()
+                stats.skipped += 1
+                # 건너뛴 묶음은 어느 구간에도 들지 않으므로 30일 삭제가 그 raw 파일을 지우지 않음(AR-6)
+                alert.notify("segment_chunk_skipped", chunk_id=c.id, device=c.device_id, boot=c.head_boot_id,
+                             seq=c.seq, error=f"{type(e).__name__}: {e}")  # fmt: skip
+        if chunks:
+            jobs.set_cursor(conn, chunks[-1].id)
+    return len(chunks)
+
+
 def step(conn: psycopg.Connection, *, now: datetime | None = None) -> StepStats:
-    """밀린 묶음을 모두 처리(1000개씩 한 트랜잭션)한 뒤 침묵 구간을 닫습니다."""
+    """밀린 묶음을 모두 처리(1000개씩 한 트랜잭션)한 뒤 침묵 구간을 닫습니다.
+
+    한 묶음이 실패하면 그 1000개를 묶음마다 savepoint를 두고 다시 처리해, 실패한 묶음만 건너뛰고 알립니다.
+    """
     s = rule_settings()
     stats = StepStats()
     while True:
         now_ = now or clock.now()
-        with conn.transaction():
-            cursor = jobs.get_cursor(conn, lock=True)
-            chunks = store.load_chunks(conn, cursor, BATCH)
-            batch = _Batch(conn, s, now_, stats)
-            for c in chunks:
-                batch.add(c)
-            if chunks:
-                jobs.set_cursor(conn, chunks[-1].id)
-        stats.chunks += len(chunks)
-        if len(chunks) < BATCH:
+        try:
+            n = _batch(conn, s, now_, stats, careful=False)
+        except psycopg.OperationalError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            log.error("segment_batch_failed", error=f"{type(e).__name__}: {e}")
+            n = _batch(conn, s, now_, stats, careful=True)
+        stats.chunks += n
+        if n < BATCH:
             break
     now_ = now or clock.now()
     with conn.transaction():

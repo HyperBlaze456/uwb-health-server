@@ -16,6 +16,8 @@ GRANT USAGE ON SCHEMA registry, intake TO intake_rw;
 GRANT SELECT ON registry.device TO intake_rw;
 GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA intake TO intake_rw;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA intake TO intake_rw;
+GRANT USAGE ON SCHEMA archive TO intake_rw;
+GRANT SELECT ON archive.purged TO intake_rw;                       -- 재색인이 삭제가 처리한 파일을 건너뜀
 
 -- core: 전부 읽기. segment·analysis·archive·pipeline 쓰기. 결과와 영구 원본은 추가만.
 GRANT USAGE ON SCHEMA pipeline, registry, intake, segment, analysis, archive TO core_rw;
