@@ -1,0 +1,27 @@
+# SPEC 3.2 import 규칙. `uv run lint-imports`
+[importlinter]
+root_package = uwbserver
+include_external_packages = True
+
+[importlinter:contract:layers]
+name = 아래로만
+type = layers
+layers =
+    uwbserver.process
+    uwbserver.intake | uwbserver.segment | uwbserver.analysis | uwbserver.archive
+    uwbserver.registry
+    uwbserver.pipeline
+
+[importlinter:contract:rules]
+name = rules.py는 바깥을 모름
+type = forbidden
+source_modules =
+    uwbserver.*.rules
+forbidden_modules =
+    psycopg
+    httpx
+    fastapi
+    uwbserver.pipeline.db
+    uwbserver.pipeline.files
+    uwbserver.pipeline.jobs
+allow_indirect_imports = True

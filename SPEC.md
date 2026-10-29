@@ -101,7 +101,9 @@ core: intake.chunk ──▶ segment ──▶ analysis(gaitfusion C2) ──▶
 
 ### 3.1 기술
 
-Python 3.12, FastAPI + uvicorn, psycopg 3, httpx, pytest, import-linter, argon2-cffi, PostgreSQL 17, Caddy 2, Docker Compose. 버전은 구현을 시작할 때 `pyproject.toml`과 `compose.yaml`에 고정합니다.
+Python 3.14, FastAPI + uvicorn, psycopg 3, httpx, pytest, import-linter, argon2-cffi, PostgreSQL 17, Caddy 2, Docker Compose. 버전은 구현을 시작할 때 `pyproject.toml`과 `compose.yaml`에 고정합니다.
+
+Python 버전, 의존성, 가상 환경, 실행은 모두 uv 하나로 관리합니다. 버전은 `.python-version`, 의존성은 `pyproject.toml`(정확한 버전)과 `uv.lock`에 둡니다. 명령은 `uv sync`, `uv run pytest`, `uv run python tools/<도구>.py`처럼 씁니다. Docker 이미지도 `uv sync --frozen`으로 같은 잠금 파일에서 설치합니다.
 
 ### 3.2 폴더
 
@@ -112,9 +114,9 @@ uwb-health-server/
   migrations/   001_pipeline.sql 002_registry.sql 003_intake.sql 004_segment.sql
                 005_analysis.sql 006_archive.sql 007_roles.sql          ← 10절 그대로
   src/uwbserver/
-    pipeline/   db.py files.py jobs.py clock.py settings.py migrate.py wire.py
+    pipeline/   db.py files.py jobs.py clock.py settings.py migrate.py wire.py log.py alert.py
     registry/   rules.py store.py routes.py access.py
-    intake/     rules.py store.py routes.py
+    intake/     rules.py store.py run.py routes.py
     segment/    rules.py store.py run.py routes.py
     analysis/   rules.py store.py run.py routes.py gaitfusion.py
     archive/    rules.py store.py run.py
@@ -132,12 +134,13 @@ uwb-health-server/
 |---|---|---|---|
 | `rules.py` | 순수 계산(데이터클래스와 함수). intake는 검사 결과 코드, segment는 구간 규칙, analysis는 C2 응답 검사와 행 만들기, archive는 보관 범위와 삭제 조건, registry는 비밀번호·토큰 | DB·HTTP·파일 | 단위 시험 |
 | `store.py` | 이 단계의 SQL 전부. 함수 하나 = 쿼리 하나 | HTTP | compose.dev의 db |
-| `run.py` | 단계 실행: `step(conn)`(5초 루프) 또는 `handle(conn, job)`(작업). rules·store·바깥 호출을 이음 | — | 가짜 gaitfusion + db |
+| `run.py` | 단계 실행: `step(conn)`(5초 루프) 또는 `handle(conn, job)`(작업). intake는 `receive`(받기 한 요청: 검사 → 파일 → fdatasync → DB)와 재색인·다시 넣기. HTTP와 도구가 같은 길을 쓰도록 여기 둠. rules·store·바깥 호출을 이음 | — | 가짜 gaitfusion + db |
 | `routes.py` | FastAPI 라우터. 모든 단계가 `app_router`(C3), intake는 `device_router`(C1)도 | — | TestClient |
 
 그 밖의 파일:
 - `pipeline/wire.py`: C1 해독기와 검사기(wire.md "서버의 검사"). intake, segment, analysis, api, 도구가 모두 이것 하나를 씁니다. 바깥을 모르는 순수 코드입니다.
-- `pipeline/`: `db.py`(연결·트랜잭션), `files.py`(5.2절 파일 형식), `jobs.py`(작업 넣기·가져가기·끝·실패·되살리기, 읽기 위치), `clock.py`(시험에서 바꿔 끼우는 시계), `settings.py`(4.3절), `migrate.py`.
+- `pipeline/`: `db.py`(연결·트랜잭션·잠금), `files.py`(5.2절 파일 형식), `jobs.py`(작업 넣기·가져가기·끝·실패·되살리기, 읽기 위치), `clock.py`(시험에서 바꿔 끼우는 시계), `settings.py`(4.3절), `migrate.py`, `log.py`(PL-5 한 줄 JSON), `alert.py`(OP-2 알림).
+- 모든 DB 연결은 autocommit이고, 쓰기는 늘 `with conn.transaction():` 블록 안에서 합니다. 블록이 끝나야 커밋되므로 받기 응답은 커밋 뒤에 나갑니다.
 - `analysis/gaitfusion.py`: C2 HTTP 클라이언트. `registry/access.py`: 로그인 확인과 권한 검사.
 - `process/`: 프로세스 셋의 조립 지점. `intake.py` = intake의 `device_router` + 시작 때 재색인(IN-9). `core.py` = 5초 루프(`segment.run.step`) + 작업 스레드(작업 종류 → `analysis`·`archive`의 `run.handle`) + 매일 `archive.run.purge`. `api.py` = 모든 단계의 `app_router`.
 
@@ -224,8 +227,10 @@ volumes: {certs: {}, pgdata: {}}
 | 이름 | 기본값 | 뜻 |
 |---|---|---|
 | `DB_HOST`, `DB_PORT`, `DB_NAME` | `db`, 5432, `uwb` | DB 주소. 프로세스와 도구가 같이 씀 |
+| `DB_OWNER` | `uwb` | DB 소유자 이름(`migrate`가 씀). compose의 `POSTGRES_USER` |
 | `DB_PASSWORD`, `DB_INTAKE_PASSWORD`, `DB_CORE_PASSWORD`, `DB_API_PASSWORD` | 없음 | 소유자와 역할 셋의 비밀번호. `migrate`가 역할에 적용 |
-| `DATA_DIR` | `/srv/uwb` | 파일 뿌리 |
+| `DATA_DIR` | `/srv/uwb` | 호스트의 파일 뿌리. compose가 컨테이너의 `/data`에 붙임 |
+| `DATA_ROOT` | `/data` | 프로세스 안의 파일 뿌리. DB에는 늘 `/data/...` 꼴의 논리 경로를 적고 여기로 풂(그래서 덤프를 다른 호스트에 복구해도 경로 열이 맞음). 호스트에서 도구를 돌릴 때는 `DATA_DIR`과 같게 |
 | `GAITFUSION_URL` | `http://gaitfusion:8100` | C2 주소 |
 | `GAITFUSION_TIMEOUT_S` | 600 | C2 요청 하나의 시간 한도 |
 | `ANALYSIS_WORKERS` | 1 | 동시에 도는 analysis 작업 수 |
@@ -238,6 +243,8 @@ volumes: {certs: {}, pgdata: {}}
 | `PURGE_ENABLED` | `false` | 30일 삭제를 실제로 할지. 꺼져 있으면 지울 대상만 로그에 적음(AR-7) |
 | `PURGE_AT_UTC` | `18:00` | 매일 삭제를 도는 시각(한국 03:00) |
 | `APP_TOKEN_TTL_DAYS` | 30 | 앱 로그인 토큰 수명 |
+| `INTAKE_WORKERS` | 2 | intake의 uvicorn 작업자 수(4.1절) |
+| `ALERT_WEBHOOK_URL` | 없음 | 알림을 POST할 곳(OP-2). 없으면 로그(`event = alert`)와 cron 메일만 |
 | `CORE_VERSION` | 이미지 빌드 때 git sha | `analysis.run.core_version` |
 
 ## 5. 데이터 등급, 파일 형식, 보존
@@ -426,7 +433,7 @@ volumes: {certs: {}, pgdata: {}}
 ### 6.7 앱 API (AP)
 
 - **AP-1** 8절의 엔드포인트를 FastAPI로 만들고 OpenAPI를 냅니다. 앱 팀은 그것으로 클라이언트를 만듭니다.
-- **AP-2 권한.** `member`는 자기 착용자와, 그 착용 기간에 귀속된 구간·걷기 구간만 봅니다. `admin`은 전부입니다. 남의 것을 요청하면 404입니다(있는지 알리지 않음).
+- **AP-2 권한.** `member`는 자기 착용자와, 그 착용 기간에 귀속된 구간·걷기 구간만 봅니다. `admin`은 전부입니다. 남의 것을 요청하면 404입니다(있는지 알리지 않음). admin 전용 엔드포인트를 `member`가 부르면 403입니다. 장치는 자기 착용자가 찬 적 있는 것만 보입니다.
 - **AP-3 상태 블록 풀기.** health·system·survey 조회는 `block` 바이트를 `pipeline/wire.py`로 풀어 wire.md의 필드 이름 그대로 JSON으로 줍니다.
 - **AP-4 궤적 읽기.** TRJ1 파일의 머리를 읽고, 채널마다 시작 위치 `24 + 4n·k`에서 `rate`에 맞게 건너뛰며 읽습니다(25 Hz = 4개마다 1개). 해석이나 압축 해제는 하지 않습니다. 캐시가 지워졌으면 404입니다.
 - **AP-5 쓰기 뒤 작업.** api가 넣는 작업은 재분석(`analysis`) 하나입니다. 착용 기록을 고쳐도 1단계에서는 작업을 넣지 않습니다(귀속은 조회 때 정해지므로).
@@ -572,10 +579,10 @@ REST + JSON, 경로 `/v1/`. 시각은 UTC ISO 8601. 인증은 `Authorization: Be
 | `GET /v1/devices/{id}/surveys` | survey 블록 목록, 풀어서 | admin | intake |
 | `GET /v1/devices/{id}/rejected?from=&to=` | 거절한 묶음: 코드, 검사 단계, `detail` | admin | intake |
 | `GET /v1/segments?device=&from=&to=` · `GET /v1/segments/{id}` | 구간 목록 · 구간 상세(Tag, 배치, 빈자리, run 목록) | admin | segment |
-| `POST /v1/segments/{id}/reanalyze` | 재분석 작업 넣기. raw도 archive도 없으면 409 | admin | segment |
+| `POST /v1/segments/{id}/reanalyze` | 재분석 작업 넣기 → 202 `{segment_id, queued}`(이미 대기 중이면 `queued = false`). raw도 archive도 없으면 409 | admin | segment |
 | `GET /v1/runs/{id}` · `GET /v1/runs/{id}/result` | run과 걷기 구간 목록 · 결과 원문(gzip 그대로, `Content-Encoding: gzip`) | admin | analysis |
 | `GET /v1/subjects/{id}/bouts?from=&to=` | 현재 run의 걷기 구간 목록(시작, 끝, 발, 모드). 귀속은 SG-9 | 본인, admin | analysis |
-| `GET /v1/bouts/{id}/trajectory?side=&rate=25` | 한 발 또는 있는 발 전부의 궤적. `rate` 25(기본)·50·100. 응답은 `{side, rate_hz, t0, n, channels: {px: [...], ...}}` | 본인, admin | analysis |
+| `GET /v1/bouts/{id}/trajectory?side=&rate=25` | 한 발 또는 있는 발 전부의 궤적. `rate` 25(기본)·50·100. 응답은 `{bout_id, trajectories: [{side, rate_hz, t0, n, channels: {px: [...], ...}}]}`(발이 하나여도 배열). 계산 못 한 표본(NaN)은 `null` | 본인, admin | analysis |
 
 ## 9. 속도 요구
 
@@ -909,10 +916,11 @@ CREATE TABLE analysis.run (
 CREATE INDEX run_segment ON analysis.run (segment_id, id DESC);
 
 -- 현재 run = 구간마다 id가 가장 큰 run. is_current 열은 없음(AN-8).
+-- "더 큰 id의 run이 없음"으로 적어, 조회가 구간 id로 좁힐 때 run_segment 색인 하나로 끝나게 함.
 CREATE VIEW analysis.current_run AS
-  SELECT DISTINCT ON (segment_id) segment_id, id AS run_id
-  FROM analysis.run
-  ORDER BY segment_id, id DESC;
+  SELECT r.segment_id, r.id AS run_id
+  FROM analysis.run r
+  WHERE NOT EXISTS (SELECT 1 FROM analysis.run n WHERE n.segment_id = r.segment_id AND n.id > r.id);
 
 -- 등급: 결과. 걷기 구간 = 사람이 걸은 한 동안. 1단계는 시간 범위·발·모드만(1.2절). 발이 둘이어도 bout는 하나.
 -- 주인 열 없음(analysis.bout_subject).
@@ -931,45 +939,48 @@ CREATE TABLE analysis.bout (
 CREATE INDEX bout_time ON analysis.bout (start_at);
 
 -- 구간의 주인(SG-9). 구간 시작 시각의 착용 기록과 맞춤. C2 context.subject에 씀.
+-- 구간마다 맞는 착용 기록을 세는 LATERAL로 적어, 바깥 조건(구간 id·기간)이 먼저 걸리고 그 구간만 계산함(9절).
 CREATE VIEW analysis.segment_subject AS
-WITH m AS (
-  SELECT s.id AS segment_id, w.subject_id,
-         (w.tag_mac IS NOT NULL) AS exact,
-         count(w.id) OVER (PARTITION BY s.id, (w.tag_mac IS NOT NULL)) AS n_same
-  FROM segment.segment s
-  LEFT JOIN registry.wear w ON w.device_id = s.device_id
-       AND (w.tag_mac IS NULL OR EXISTS (SELECT 1 FROM segment.segment_tag st
-                                         WHERE st.segment_id = s.id AND st.tag_mac = w.tag_mac))
-       AND w.started_at <= s.start_at
-       AND (w.ended_at IS NULL OR s.start_at < w.ended_at)
-)
-SELECT DISTINCT ON (segment_id) segment_id,
-       CASE WHEN n_same = 1 THEN subject_id END AS subject_id,   -- 같은 우선순위에 둘이면 NULL
-       (n_same > 1) AS ambiguous
-FROM m
-ORDER BY segment_id, exact DESC;                -- tag_mac 명시 쪽 먼저
+SELECT s.id AS segment_id, o.subject_id, o.ambiguous
+FROM segment.segment s
+CROSS JOIN LATERAL (
+  SELECT CASE WHEN count(*) = 1 THEN min(m.subject_id) END AS subject_id,   -- 같은 우선순위에 둘이면 NULL
+         count(*) > 1 AS ambiguous
+  FROM (
+    SELECT w.subject_id, (w.tag_mac IS NOT NULL) AS exact,
+           bool_or(w.tag_mac IS NOT NULL) OVER () AS any_exact          -- tag_mac 명시 쪽이 있으면 그쪽만
+    FROM registry.wear w
+    WHERE w.device_id = s.device_id
+      AND (w.tag_mac IS NULL OR EXISTS (SELECT 1 FROM segment.segment_tag st
+                                        WHERE st.segment_id = s.id AND st.tag_mac = w.tag_mac))
+      AND w.started_at <= s.start_at
+      AND (w.ended_at IS NULL OR s.start_at < w.ended_at)
+  ) m
+  WHERE m.exact = m.any_exact
+) o;
 
 -- 걷기 구간의 주인(SG-9). 걷기 구간 시작 시각의 착용 기록과 맞춤.
--- 속도: 언제나 bout id나 기간 조건과 함께 씀. 조건이 b.id로 내려가 그 bout만 계산함.
+-- 속도: 바깥 조건(bout id·기간)이 먼저 걸리고, 남은 bout마다 착용 기록 몇 줄만 셈(9절).
 CREATE VIEW analysis.bout_subject AS
-WITH m AS (
-  SELECT b.id AS bout_id, w.subject_id,
-         (w.tag_mac IS NOT NULL) AS exact,
-         count(w.id) OVER (PARTITION BY b.id, (w.tag_mac IS NOT NULL)) AS n_same
-  FROM analysis.bout b
-  JOIN analysis.run r       ON r.id = b.run_id
-  JOIN segment.segment s    ON s.id = r.segment_id
-  LEFT JOIN registry.wear w ON w.device_id = s.device_id
-       AND (w.tag_mac IS NULL OR EXISTS (SELECT 1 FROM segment.segment_tag st
-                                         WHERE st.segment_id = s.id AND st.tag_mac = w.tag_mac))
-       AND w.started_at <= b.start_at
-       AND (w.ended_at IS NULL OR b.start_at < w.ended_at)
-)
-SELECT DISTINCT ON (bout_id) bout_id,
-       CASE WHEN n_same = 1 THEN subject_id END AS subject_id,
-       (n_same > 1) AS ambiguous
-FROM m
-ORDER BY bout_id, exact DESC;
+SELECT b.id AS bout_id, o.subject_id, o.ambiguous
+FROM analysis.bout b
+JOIN analysis.run r    ON r.id = b.run_id
+JOIN segment.segment s ON s.id = r.segment_id
+CROSS JOIN LATERAL (
+  SELECT CASE WHEN count(*) = 1 THEN min(m.subject_id) END AS subject_id,   -- 같은 우선순위에 둘이면 NULL
+         count(*) > 1 AS ambiguous
+  FROM (
+    SELECT w.subject_id, (w.tag_mac IS NOT NULL) AS exact,
+           bool_or(w.tag_mac IS NOT NULL) OVER () AS any_exact          -- tag_mac 명시 쪽이 있으면 그쪽만
+    FROM registry.wear w
+    WHERE w.device_id = s.device_id
+      AND (w.tag_mac IS NULL OR EXISTS (SELECT 1 FROM segment.segment_tag st
+                                        WHERE st.segment_id = s.id AND st.tag_mac = w.tag_mac))
+      AND w.started_at <= b.start_at
+      AND (w.ended_at IS NULL OR b.start_at < w.ended_at)
+  ) m
+  WHERE m.exact = m.any_exact
+) o;
 
 -- 등급: 캐시. 궤적은 발마다 TRJ1 파일 하나(7.3절), 행은 위치만. 같은 구간의 새 run이 끝나면 파일과 함께 지움.
 CREATE TABLE analysis.trajectory (

@@ -1,0 +1,60 @@
+# SPEC 4.1. 운영 배치. 개발·시험은 compose.dev.yaml을 겹쳐 씀:
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d
+name: uwb
+
+x-app: &app
+  build: .
+  image: uwb-server
+  env_file: .env
+  environment:
+    DATA_ROOT: /data
+x-ready: &ready
+  migrate: {condition: service_completed_successfully}
+
+services:
+  proxy:
+    image: caddy:2.10.2
+    ports: ["443:443"]
+    volumes: [./Caddyfile:/etc/caddy/Caddyfile:ro, certs:/data]
+    depends_on: [intake, api]
+    restart: unless-stopped
+  db:
+    image: postgres:17.6
+    environment:
+      POSTGRES_USER: "${DB_OWNER:-uwb}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+      POSTGRES_DB: "${DB_NAME:-uwb}"
+    volumes: [pgdata:/var/lib/postgresql/data]
+    restart: unless-stopped
+  migrate:
+    <<: *app
+    command: python -m uwbserver.pipeline.migrate
+    depends_on: [db]
+  intake:
+    <<: *app
+    command: sh -c "python -m uwbserver.process.intake reindex && exec uvicorn uwbserver.process.intake:app --host 0.0.0.0 --port 8001 --workers ${INTAKE_WORKERS:-2}"
+    depends_on: *ready
+    volumes: ["${DATA_DIR:-/srv/uwb}/raw:/data/raw", "${DATA_DIR:-/srv/uwb}/rejected:/data/rejected"]
+    restart: unless-stopped
+  core:
+    <<: *app
+    command: python -m uwbserver.process.core
+    depends_on:
+      <<: *ready
+      gaitfusion: {condition: service_started}
+    volumes: ["${DATA_DIR:-/srv/uwb}:/data"]
+    restart: unless-stopped
+  api:
+    <<: *app
+    command: uvicorn uwbserver.process.api:app --host 0.0.0.0 --port 8000
+    depends_on: *ready
+    volumes: ["${DATA_DIR:-/srv/uwb}:/data:ro"]
+    restart: unless-stopped
+  gaitfusion:
+    image: "${GAITFUSION_IMAGE:-ghcr.io/example/gaitfusion:latest}"
+    command: uvicorn gaitfusion.service:app --host 0.0.0.0 --port 8100
+    restart: unless-stopped
+
+volumes:
+  certs: {}
+  pgdata: {}

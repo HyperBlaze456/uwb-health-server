@@ -1,0 +1,37 @@
+[project]
+name = "uwb-health-server"
+version = "0.1.0"
+description = "UWB 보행 원본 수신·정돈 서버 (SPEC.md 1단계)"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+  "fastapi==0.162.0",
+  "uvicorn==0.54.0",
+  "psycopg[binary]==3.3.6",
+  "psycopg-pool==3.3.3",
+  "httpx==0.28.1",
+  "argon2-cffi==25.1.0",
+]
+
+[dependency-groups]
+dev = ["pytest==9.2.0", "import-linter==2.15"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/uwbserver"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+testpaths = ["tests"]
+addopts = "-ra --import-mode=importlib"
+filterwarnings = [
+  # 시험 도구(starlette TestClient)의 안내일 뿐, 서버 코드와 무관
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+  "ignore:You should not use the 'timeout' argument with the TestClient",
+]
+markers = [
+  "db: compose.dev의 PostgreSQL이 필요한 시험",
+  "slow: 수 초 이상 걸리는 시험",
+]
