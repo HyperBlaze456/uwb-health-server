@@ -1173,7 +1173,7 @@ intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이
 | 4 | 서버 | **M4** 원본 보관과 삭제(삭제는 꺼 둔 채) | M3 |
 | 5 | 서버 | **M5** 앱 API | M1–M4 |
 | 6 | 서버 | **M6** compose, 백업, 복구 연습 | M5 |
-| 7 | gaitfusion | `service.py`(C2), `wire.py`, 걷기 구간 찾기, 궤적 TRJ1, 이미지. 나오면 M3의 시험 7·9를 진짜 서비스로. 2026-10-30 gaitfusion `2c03531`로 통과. 메모리를 줄인 `86977f4`(`memory-optimization` 브랜치)로도 통과 | 서버 M3과 따로 진행 |
+| 7 | gaitfusion | `service.py`(C2), `wire.py`, 걷기 구간 찾기, 궤적 TRJ1, 이미지. 나오면 M3의 시험 7·9를 진짜 서비스로. 2026-10-30 gaitfusion `2c03531`로 통과. 메모리를 줄인 `8010070`(gaitfusion main)으로도 통과 | 서버 M3과 따로 진행 |
 | 8 | 펌웨어 | Head TLS 메모리 확인(1초마다 5 kB POST를 keep-alive로 보내며 힙과 수집이 버티는지) → Head 전송부(묶음 인코더, PSRAM 링 버퍼, HTTPS, 재전송, UTC 추정, health 블록) | 실제 Head로 받기 |
 | 9 | 서버 | `import_usb.py`로 실제 기록 넣기 | 서버 M3 |
 | 10 | 서버 | proxy와 원격 VM 배포 | 15절의 결정 |
@@ -1202,7 +1202,7 @@ intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이
 | 색인·결과 표 | `intake.chunk` 30일 1.4 GB, 분석 결과 표 연 1 GB 이하(1단계) |
 | 서버 디스크 | 1-Tag 기준 1년 차 약 120 GB, 이후 연 약 80 GB 증가. 250 GB면 약 2년 반. 2-Tag는 IMU와 궤적이 두 배라 더 빨리 참 |
 | 원격 저장 | raw 37 GB(고정) + 걷기 원본 연 43 GB + DB 덤프(14일 + 매월 1개) |
-| gaitfusion 메모리 | 양발로 1시간 내내 걸은 구간 하나(가장 무거운 경우)를 분석할 때 서비스와 작업 프로세스 2개가 함께 쓴 최고치. 메모리를 줄인 gaitfusion `86977f4`(`memory-optimization` 브랜치, 응답은 줄이기 전과 바이트까지 같음)는 개발 PC 약 0.9 GB, 리눅스 컨테이너 약 0.6 GB. 줄이기 전 `2c03531`은 개발 PC 약 2.1 GB, 리눅스 컨테이너 약 1.5 GB. 2026-10-30 잼 |
+| gaitfusion 메모리 | 양발로 1시간 내내 걸은 구간 하나(가장 무거운 경우)를 분석할 때 서비스와 작업 프로세스 2개가 함께 쓴 최고치. 메모리를 줄인 gaitfusion `8010070`(main, 응답은 줄이기 전과 바이트까지 같음)은 개발 PC 약 0.9 GB, 리눅스 컨테이너 약 0.6 GB. 줄이기 전 `2c03531`은 개발 PC 약 2.1 GB, 리눅스 컨테이너 약 1.5 GB. 2026-10-30 잼 |
 | 권장 VM | 2 vCPU 이상, SSD 250 GB. 메모리 4 GB 이상: 메모리를 줄인 gaitfusion이면 위 최고치(1 GB 아래)와 DB, 서버 프로세스가 함께 들어감. 줄이기 전 판이면 4 GB는 빠듯함. 정확한 값은 호스팅을 정할 때(15절 1) |
 
 실제 착용 시간은 Tag 전원에 달려 있어 이보다 훨씬 짧을 가능성이 큽니다.
@@ -1474,4 +1474,4 @@ GRANT SELECT ON ALL TABLES IN SCHEMA summary TO api_rw;
 확인할 것(구현 중):
 1. 권장 VM 디스크의 `fdatasync` 시간(9절). 20 ms를 넘으면 디스크 종류를 바꿉니다.
 2. ~~gaitfusion이 수 분짜리 seq 빈자리(archive 입력)를 `head_us_start`로 잇는지(7.1절).~~ 확인함(2026-10-30, gaitfusion `2c03531`): 걷기 사이 약 5분을 쉰 양발 기록에서, 보관본으로 다시 분석한 걷기 구간 시각이 원본 분석과 µs까지 같고 궤적 값 차이는 1e-8 이하. M3-9가 같은 것을 확인합니다.
-3. ~~1시간 구간 분석이 `GAITFUSION_TIMEOUT_S`(10분) 안에 끝나는지.~~ 확인함(2026-10-30, gaitfusion `2c03531`, 작업 프로세스 2개, 개발 PC): 양발로 1시간 내내 걸은 구간(묶음 3601개, 25 MB)이 52초. 메모리를 줄인 `86977f4`도 약 55초. 실제 VM에서 다시 잽니다.
+3. ~~1시간 구간 분석이 `GAITFUSION_TIMEOUT_S`(10분) 안에 끝나는지.~~ 확인함(2026-10-30, gaitfusion `2c03531`, 작업 프로세스 2개, 개발 PC): 양발로 1시간 내내 걸은 구간(묶음 3601개, 25 MB)이 52초. 메모리를 줄인 `8010070`도 약 55초. 실제 VM에서 다시 잽니다.
