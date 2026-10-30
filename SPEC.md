@@ -45,7 +45,7 @@
 
 - 보폭·일별 요약·지수 계산(2단계).
 - Head 펌웨어의 전송부(펌웨어 저장소의 일). 1단계는 가짜 Head(TL-1)로 검사합니다.
-- gaitfusion 서비스 구현(gaitfusion 저장소의 일). 1단계는 가짜 gaitfusion(TL-2)으로 검사하고, 진짜 서비스가 나오면 같은 시험을 돌립니다.
+- gaitfusion 서비스 구현(gaitfusion 저장소의 일). 1단계는 가짜 gaitfusion(TL-2)으로 검사하고, 진짜 서비스로는 C2 계약 시험(M3-7)과 진짜 서비스 전 구간 시험(M3-9)을 돌립니다.
 - 원격 VM 배포와 proxy 인증서(12절 마지막 순서).
 
 ## 2. 구조
@@ -122,7 +122,7 @@ uwb-health-server/
     archive/    rules.py store.py run.py
     process/    intake.py core.py api.py
   tests/        pipeline/ registry/ intake/ segment/ analysis/ archive/
-                contract/wire_vectors/  contract/gaitfusion/  e2e/  test_ownership.py
+                contract/wire_vectors/  contract/gaitfusion/  e2e/(data/)  test_ownership.py
   tools/        fake_head.py fake_gaitfusion.py reindex_raw.py verify_archive.py
                 reingest_rejected.py admin.py import_usb.py bench.py
   ops/          backup.sh crontab restore.md
@@ -588,7 +588,7 @@ REST + JSON, 경로 `/v1/`. 시각은 UTC ISO 8601. 인증은 `Authorization: Be
 
 ## 9. 속도 요구
 
-값은 권장 VM(2 vCPU, 4 GB RAM, SSD) 기준 p95 목표이고 아직 재지 않았습니다. 네트워크와 TLS 시간은 빼고, PL-5 로그로 잽니다(TL-8). 표나 조회를 바꿀 때 오른쪽 열의 방법을 깨지 않습니다.
+값은 권장 VM(13.2절) 기준 p95 목표이고 아직 재지 않았습니다. 네트워크와 TLS 시간은 빼고, PL-5 로그로 잽니다(TL-8). 표나 조회를 바꿀 때 오른쪽 열의 방법을 깨지 않습니다.
 
 | 경로 | 요구 (p95) | 지키는 방법 |
 |---|---|---|
@@ -1139,6 +1139,7 @@ intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이
 6. 배치 기다리기: system 블록 없이 닫힌 구간은 작업이 미뤄지고, 블록이 오면 그 좌표로 보냄. 1시간이 지나면 `anchors = null`(AN-3).
 7. C2 계약 시험(`tests/contract/gaitfusion/`): 요청 파트 순서와 `context` 필드, 응답 검사 규칙 각각. 진짜 gaitfusion 이미지가 있으면 같은 시험을 그것으로도 돌림.
 8. 속도: 1시간 구간 run의 DB 트랜잭션이 50 ms 이하(9절).
+9. 진짜 gaitfusion 전 구간 시험(`tests/e2e/test_real_gaitfusion.py`, 이미지 이름을 줄 때만): gaitfusion 합성 보행으로 만든 양발 기록(`tests/e2e/data/walk_two_feet.*`, 만든 판과 해시를 같이 둠)을 받기로 보내 구간 → 분석 → 보관 → 앱 궤적 조회까지. 이어서 30일 삭제가 지우는 원본 행을 지우고 재분석하면 보관본(수 분짜리 seq 빈자리)으로 같은 걷기 구간과 궤적이 나옴(AR-8). 가짜 Head(TL-1)의 보행 신호는 형식 시험용이라 진짜 서비스가 걸음으로 알아보지 못하므로 이 파일을 씁니다.
 
 **M4 원본 보관과 삭제 (AR, TL-4)**
 1. 보관 범위: 걷기 구간 ± 15초, 구간 안으로 자름, 겹침 합침, 이미 있는 범위 제외. 파일의 sha256이 행과 같음.
@@ -1172,7 +1173,7 @@ intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이
 | 4 | 서버 | **M4** 원본 보관과 삭제(삭제는 꺼 둔 채) | M3 |
 | 5 | 서버 | **M5** 앱 API | M1–M4 |
 | 6 | 서버 | **M6** compose, 백업, 복구 연습 | M5 |
-| 7 | gaitfusion | `service.py`(C2), `wire.py`, 걷기 구간 찾기, 궤적 TRJ1, 이미지. 나오면 M3의 시험 7을 진짜 서비스로 | 서버 M3과 따로 진행 |
+| 7 | gaitfusion | `service.py`(C2), `wire.py`, 걷기 구간 찾기, 궤적 TRJ1, 이미지. 나오면 M3의 시험 7·9를 진짜 서비스로. 2026-10-30 gaitfusion `2c03531`로 통과 | 서버 M3과 따로 진행 |
 | 8 | 펌웨어 | Head TLS 메모리 확인(1초마다 5 kB POST를 keep-alive로 보내며 힙과 수집이 버티는지) → Head 전송부(묶음 인코더, PSRAM 링 버퍼, HTTPS, 재전송, UTC 추정, health 블록) | 실제 Head로 받기 |
 | 9 | 서버 | `import_usb.py`로 실제 기록 넣기 | 서버 M3 |
 | 10 | 서버 | proxy와 원격 VM 배포 | 15절의 결정 |
@@ -1201,8 +1202,8 @@ intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이
 | 색인·결과 표 | `intake.chunk` 30일 1.4 GB, 분석 결과 표 연 1 GB 이하(1단계) |
 | 서버 디스크 | 1-Tag 기준 1년 차 약 120 GB, 이후 연 약 80 GB 증가. 250 GB면 약 2년 반. 2-Tag는 IMU와 궤적이 두 배라 더 빨리 참 |
 | 원격 저장 | raw 37 GB(고정) + 걷기 원본 연 43 GB + DB 덤프(14일 + 매월 1개) |
-| gaitfusion 메모리 | 10분 창 하나에 약 0.3 GB |
-| 권장 VM | 2 vCPU, 4 GB RAM, SSD 250 GB |
+| gaitfusion 메모리 | 양발로 1시간 내내 걸은 구간 하나(가장 무거운 경우)에 최고 약 2.1 GB(서비스 + 작업 프로세스 2개, 2026-10-30 gaitfusion `2c03531`, 개발 PC에서 잼) |
+| 권장 VM | 2 vCPU 이상, SSD 250 GB. 메모리는 4 GB보다 크게(4 GB는 위 gaitfusion 최고치와 DB를 함께 두기에 빠듯함). 정확한 값은 호스팅을 정할 때(15절 1) |
 
 실제 착용 시간은 Tag 전원에 달려 있어 이보다 훨씬 짧을 가능성이 큽니다.
 
@@ -1468,8 +1469,9 @@ GRANT SELECT ON ALL TABLES IN SCHEMA summary TO api_rw;
 4. 원격 백업 저장소: S3 호환 오브젝트 스토리지(버전 보존 기능) 또는 두 번째 머신.
 5. 30일 삭제를 켜는 때(AR-7의 조건을 언제 확인할지).
 6. 보관한 범위 안의 빈자리를 늦은 묶음이 메운 경우(예: 해독기를 고친 뒤 IN-10으로 다시 넣은 묶음). `archive.range`는 seq 구간이고 겹침을 막으므로(AR-3) 그 묶음을 보관 파일에 넣을 길이 없습니다. 지금은 AR-6의 `archive_incomplete` 조건으로 그 구간의 raw를 지우지 않고 남깁니다. 정할 것: 보충 범위를 허용할지(겹침 규칙을 바꿈), 아니면 지금처럼 raw를 남길지.
+7. gaitfusion의 `status: "partial"` 응답. gaitfusion은 자기 마감 시각(540초) 안에 못 끝낸 발의 궤적을 빼고 `result.status = "partial"`로 답합니다(걷기 구간 목록은 그대로). 1단계 서버는 이 필드를 보지 않으므로(7.2절 표에 없음) 궤적이 빠진 run이 `done`이고 "현재"가 됩니다. 걷기 원본은 걷기 구간 시각으로 보관하므로 잃지 않습니다. 정할 것: 이 표시를 run에 저장해 앱에 보일지, 나중에 자동으로 다시 분석할지(gaitfusion은 같은 요청의 답을 15분 동안 다시 쓰므로 그 뒤에), 아니면 지금처럼 둘지.
 
 확인할 것(구현 중):
 1. 권장 VM 디스크의 `fdatasync` 시간(9절). 20 ms를 넘으면 디스크 종류를 바꿉니다.
-2. gaitfusion이 수 분짜리 seq 빈자리(archive 입력)를 `head_us_start`로 잇는지(7.1절).
-3. 1시간 구간 분석이 `GAITFUSION_TIMEOUT_S`(10분) 안에 끝나는지. 아니면 시간 한도나 구간 최대 길이를 바꿉니다.
+2. ~~gaitfusion이 수 분짜리 seq 빈자리(archive 입력)를 `head_us_start`로 잇는지(7.1절).~~ 확인함(2026-10-30, gaitfusion `2c03531`): 걷기 사이 약 5분을 쉰 양발 기록에서, 보관본으로 다시 분석한 걷기 구간 시각이 원본 분석과 µs까지 같고 궤적 값 차이는 1e-8 이하. M3-9가 같은 것을 확인합니다.
+3. ~~1시간 구간 분석이 `GAITFUSION_TIMEOUT_S`(10분) 안에 끝나는지.~~ 확인함(2026-10-30, gaitfusion `2c03531`, 작업 프로세스 2개, 개발 PC): 양발로 1시간 내내 걸은 구간(묶음 3601개, 25 MB)이 52초. 실제 VM에서 다시 잽니다.

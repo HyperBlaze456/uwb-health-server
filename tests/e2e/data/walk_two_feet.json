@@ -1,0 +1,49 @@
+{
+  "made_by": "tests/e2e/data/make_walk_two_feet.py",
+  "gaitfusion_commit": "2c0353168950cd537ea182413bd5fcb61948a198",
+  "format": "gzip of C1 record batch (u32 len little-endian + chunk, repeated), chunk_seq ascending",
+  "sha256": "3a471a0fb51730ed1db2eae850085d6be945b350662cbb48a186456911b249c1",
+  "n_chunks": 296,
+  "max_chunk_bytes": 7504,
+  "device_mac": "e0:72:a1:ac:a8:58",
+  "head_boot_id": 2953158885,
+  "geometry_id": "e2e-room-1",
+  "anchors": [
+    [
+      0.0,
+      0.0,
+      1.5,
+      0.0
+    ],
+    [
+      4.0,
+      0.0,
+      1.5,
+      0.0
+    ],
+    [
+      4.0,
+      5.0,
+      0.5,
+      0.0
+    ],
+    [
+      0.0,
+      5.0,
+      2.3,
+      0.0
+    ]
+  ],
+  "sides": "both",
+  "utc": false,
+  "walks_s": [
+    [
+      15.0,
+      50.0
+    ],
+    [
+      240.0,
+      275.0
+    ]
+  ]
+}

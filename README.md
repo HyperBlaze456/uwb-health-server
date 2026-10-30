@@ -15,6 +15,21 @@ uv run lint-imports                                          # import 규칙(SPE
 
 시험은 `.env`의 비밀번호로 같은 PostgreSQL에 `uwb_test` DB를 새로 만들어 씁니다. `.env`가 없으면 `cp .env.example .env`부터 합니다.
 
+이미지를 빌드해 스택 전체를 띄우는 전 구간 시험(`tests/e2e/`)은 켤 때만 돕니다. 각자 다른 compose 프로젝트와 포트를 써서 개발 스택 옆에서 돌고, 끝나면 내립니다.
+
+```sh
+UWB_E2E=1 uv run pytest tests/e2e -s       # 가짜 gaitfusion: 받는 도중 intake·db를 강제로 끄고 → 구간 → 분석 → 보관
+
+# 진짜 gaitfusion(옆 저장소)으로: 받기 → 구간 → 분석 → 보관 → 앱 궤적, 원본을 지운 뒤 보관본 재분석(SPEC M3-9)
+(cd ../gaitfusion && docker build -t gaitfusion:local .)
+UWB_E2E=1 UWB_E2E_GAITFUSION_IMAGE=gaitfusion:local uv run pytest tests/e2e -s
+
+# C2 계약 시험을 떠 있는 진짜 서비스에 대고(SPEC M3-7)
+GAITFUSION_URL=http://127.0.0.1:8100 uv run pytest tests/contract/gaitfusion
+```
+
+진짜 gaitfusion 시험의 입력은 gaitfusion 합성 보행으로 만든 `tests/e2e/data/walk_two_feet.*`입니다. 가짜 Head의 보행 신호는 형식 시험용이라 진짜 서비스가 걸음으로 알아보지 못합니다. 만드는 법은 `tests/e2e/data/make_walk_two_feet.py`에 있습니다.
+
 ## 스택 띄우기
 
 ```sh
@@ -33,6 +48,10 @@ sudo chown -R 10001:10001 /srv/uwb
 ```sh
 # 개발: proxy 없이 intake 8001, api 8000, db 5432를 열고, gaitfusion 자리에 가짜를 띄움
 docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+
+# 개발인데 gaitfusion만 진짜 이미지로
+GAITFUSION_IMAGE=gaitfusion:local docker compose -f compose.yaml -f compose.dev.yaml \
+  -f tests/e2e/compose.real-gaitfusion.yaml up -d --build
 
 # 운영: proxy(Caddy)가 443 하나만 엶. .env에 SITE_ADDRESS(도메인 또는 IP)를 둠. 도메인이 없으면 Caddyfile 참고
 CORE_VERSION=$(git rev-parse --short HEAD) docker compose build

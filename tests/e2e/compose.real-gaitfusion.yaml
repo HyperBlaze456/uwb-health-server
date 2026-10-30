@@ -1,0 +1,7 @@
+# 전 구간 시험 test_real_gaitfusion.py용 겹침: 개발 compose(compose.dev.yaml)의 가짜 gaitfusion 자리에
+# 진짜 gaitfusion 이미지를 운영(compose.yaml)과 같은 명령으로 띄웁니다. 이미지 이름은 시험이 GAITFUSION_IMAGE로 줍니다.
+services:
+  gaitfusion:
+    image: "${GAITFUSION_IMAGE:?GAITFUSION_IMAGE를 주세요}"
+    build: !reset null
+    command: uvicorn gaitfusion.service:app --host 0.0.0.0 --port 8100
