@@ -81,7 +81,7 @@ docker compose exec core python tools/verify_archive.py
 | `verify_archive.py [--reindex] [--prefix]` | archive 파일의 sha256을 `archive.range`와 대조. `--reindex`는 빠진 행을 파일에서 다시 만듦 | `core_rw` | TL-4 |
 | `reingest_rejected.py <파일> [--since]` | 거절한 묶음을 받기와 같은 경로로 다시 넣음 | `intake_rw` | TL-5 |
 | `admin.py` | `create-admin`, `register-device`, `rotate-token`, `reanalyze` | `api_rw` | TL-6 |
-| `import_usb.py` | Head USB 기록(JSONL)을 묶음으로 바꿔 넣음. **아직 없음**(M3 뒤) | 없음 | TL-7 |
+| `import_usb.py <기록> --device MAC=TOKEN --utc-start ISO [--dry-run]` | Head USB 기록(`record_usb.py` 출력)을 1초 묶음으로 바꿔 intake에 보냄. `--dry-run`은 검사만 | 없음(HTTP) | TL-7 |
 | `bench.py` | 장치 N대로 초당 1요청씩 보내고 intake 로그에서 p95를 셈 | 없음(`--register`는 `api_rw`) | TL-8 |
 
 ## 데이터는 어디에

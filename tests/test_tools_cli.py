@@ -36,10 +36,19 @@ def test_tool_help(name: str) -> None:
     assert "usage:" in p.stdout
 
 
-def test_import_usb_is_a_stub() -> None:
-    p = run(sys.executable, "tools/import_usb.py", "x.jsonl", "--device", "e0:72:a1:ac:a8:58=t", "--utc-start", "2026-10-20T00:00Z")
+def test_import_usb_dry_run() -> None:
+    """TL-7: 실제 기록 조각을 묶음으로 바꿔 검사만 함. 더 자세한 것은 tests/test_import_usb.py."""
+    p = run(sys.executable, "tools/import_usb.py", "tests/data/usb_head_slice.jsonl", "--device", "e0:72:a1:ac:a8:58=t",
+            "--utc-start", "2026-10-20T10:24:00Z", "--dry-run")  # fmt: skip
+    assert p.returncode == 0, p.stderr
+    assert "검사(check_chunk): ok" in p.stdout
+
+
+def test_import_usb_argument_error() -> None:
+    p = run(sys.executable, "tools/import_usb.py", "tests/data/usb_head_slice.jsonl", "--device", "e0:72:a1:ac:a8:58=t",
+            "--utc-start", "2026-10-20T00:00")  # fmt: skip
     assert p.returncode == 2
-    assert "TL-7" in p.stderr
+    assert "시간대" in p.stderr
 
 
 def test_verify_archive_rejects_prefix_outside_archive() -> None:

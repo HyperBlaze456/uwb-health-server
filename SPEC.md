@@ -448,7 +448,7 @@ volumes: {certs: {}, pgdata: {}}
 - **TL-4 `verify_archive.py [--reindex]`.** archive 파일의 sha256을 `archive.range`와 대조합니다. `--reindex`는 파일에서 빠진 행을 다시 만듭니다.
 - **TL-5 `reingest_rejected.py`.** IN-10.
 - **TL-6 `admin.py`.** `create-admin`, `register-device <mac>`(토큰 출력), `rotate-token`, `reanalyze <segment_id>`. API와 같은 store 함수를 씁니다.
-- **TL-7 `import_usb.py`.** 펌웨어의 USB 레코더 기록(Head `range`·`imu_batch`·`system` JSONL, [protocol.md](../uwb-firmware/docs/protocol.md))을 1초 묶음으로 바꿔 intake에 보냅니다. Head 전송부가 생기기 전에 실제 기록을 넣는 길입니다. health 블록은 만들지 않습니다. M3 뒤에 만듭니다.
+- **TL-7 `import_usb.py`.** 펌웨어의 USB 레코더 기록(Head `range`·`imu_batch`·`system`, [protocol.md](../uwb-firmware/docs/protocol.md))을 1초 묶음으로 바꿔 intake에 보냅니다. Head 전송부가 생기기 전에 실제 기록을 넣는 길입니다. 레코더(`../uwb-firmware/scripts/record_usb.py`)는 줄마다 앞에 PC 단조 시각 µs와 TAB을 붙이며, 맨 JSON 줄도 받습니다. 묶음 나누기는 Head 규칙과 같습니다: 프레임도 블록도 없는 초는 묶음을 만들지 않고 seq도 쓰지 않음, 배치(`geometry_id`)가 바뀌면 그 이벤트에서 닫음, system 블록은 부팅 안 첫 번·내용이 바뀔 때·10분마다. 시각은 `--utc-start`(기록 첫 줄의 UTC, 시간대 필수)와 줄 앞 PC 시각으로 맞춥니다(부팅마다 PC 시각 − `head_rx_us`의 최솟값). 레코더가 포트를 열 때 보드 버퍼에 남아 있던 옛 줄이 있어도 시각이 밀리지 않습니다. 예전 펌웨어의 `system`(`device_id`·`set_members`가 없음)도 받고, 이때 `set_members`는 0입니다. health·survey 블록은 만들지 않습니다. 같은 파일과 같은 `--utc-start`는 같은 바이트가 되어, 다시 보내면 `duplicate`입니다. 보내기 전에 묶음마다 `pipeline/wire.py`의 검사기를 돌리고, `--dry-run`은 거기까지만 합니다. 자세한 규칙은 도구의 docstring에 있습니다.
 - **TL-8 `bench.py`.** 9절의 속도를 재는 부하 도구입니다. 장치 N대로 초당 1요청씩 보내고, PL-5 로그에서 p95를 셉니다.
 
 도구의 DB 역할: `reindex_raw.py`·`reingest_rejected.py`는 `intake_rw`, `verify_archive.py`는 `core_rw`(`--reindex`의 INSERT 포함), `admin.py`는 `api_rw`입니다. `fake_head.py`·`fake_gaitfusion.py`·`import_usb.py`·`bench.py`는 DB에 접속하지 않고 HTTP만 씁니다. 접속 정보는 4.3절의 `DB_*`입니다.
@@ -1175,7 +1175,7 @@ intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이
 | 6 | 서버 | **M6** compose, 백업, 복구 연습 | M5 |
 | 7 | gaitfusion | `service.py`(C2), `wire.py`, 걷기 구간 찾기, 궤적 TRJ1, 이미지. 나오면 M3의 시험 7·9를 진짜 서비스로. 2026-10-30 gaitfusion `2c03531`로 통과. 메모리를 줄인 `8010070`(gaitfusion main)으로도 통과 | 서버 M3과 따로 진행 |
 | 8 | 펌웨어 | Head TLS 메모리 확인(1초마다 5 kB POST를 keep-alive로 보내며 힙과 수집이 버티는지) → Head 전송부(묶음 인코더, PSRAM 링 버퍼, HTTPS, 재전송, UTC 추정, health 블록) | 실제 Head로 받기 |
-| 9 | 서버 | `import_usb.py`로 실제 기록 넣기 | 서버 M3 |
+| 9 | 서버 | `import_usb.py`로 실제 기록 넣기. 2026-11-10 만듦: 실제 기록 `wifi-save-head.jsonl`(10분, range·system, 예전 모양의 system)을 `--dry-run`으로 바꿔 묶음 602개가 모두 검사를 통과. `imu_batch` 경로는 그 줄이 든 실제 기록이 아직 없어 펌웨어 출력 코드대로 쓴 줄로만 시험함 | 서버 M3 |
 | 10 | 서버 | proxy와 원격 VM 배포 | 15절의 결정 |
 
 측량용 3D 뷰어는 지금처럼 현장 노트북 broker(`../uwb-firmware/server/mosquitto.conf`)로 쓰고, 설치가 끝나면 Head 설정을 서버 URL로 바꿉니다.
