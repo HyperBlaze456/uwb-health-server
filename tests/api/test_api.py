@@ -147,11 +147,12 @@ def test_segments_runs_bouts_trajectory(env, api, admin, people, device):
     assert detail["subject_id"] == people["A"] and detail["tags"] and len(detail["runs"]) == 1
     run_id = detail["runs"][0]["id"]
     run = api.get(f"/v1/runs/{run_id}", headers=admin).json()
-    assert run["is_current"] and run["bouts"]
+    assert run["is_current"] and run["bouts"] and run["result_status"] == "complete"
+    assert detail["runs"][0]["result_status"] == "complete"
     res = api.get(f"/v1/runs/{run_id}/result", headers=admin)
     assert res.status_code == 200 and res.json()["c2_version"] == 1  # 클라이언트가 gzip을 풂
     bouts = api.get(f"/v1/subjects/{people['A']}/bouts?from=2026-10-25T00:00:00Z", headers=people["a"]).json()
-    assert len(bouts) == len(run["bouts"])
+    assert len(bouts) == len(run["bouts"]) and {b["result_status"] for b in bouts} == {"complete"}
     assert api.get(f"/v1/subjects/{people['A']}/bouts?from=2026-10-25T00:00:00Z", headers=people["b"]).status_code == 404
     bid = bouts[0]["id"]
     t25 = api.get(f"/v1/bouts/{bid}/trajectory", headers=people["a"]).json()["trajectories"][0]
@@ -171,6 +172,24 @@ def test_segments_runs_bouts_trajectory(env, api, admin, people, device):
     env.q("DELETE FROM archive.range")
     env.q("DELETE FROM intake.health; DELETE FROM intake.system; DELETE FROM intake.chunk")
     assert api.post(f"/v1/segments/{seg}/reanalyze", headers=admin).status_code == 409
+
+
+def test_partial_run_visible(env, api, admin, people, device):
+    """gaitfusion이 partial로 답한 run: done이고 현재 run, result_status가 run·구간 상세·걷기 구간 목록에 보임.
+    궤적이 빠진 걷기 구간의 궤적 조회는 404(15절 정할 것 7)."""
+    api.post("/v1/wear", json={"subject_id": people["A"], "device_id": device.device.id,
+                               "started_at": "2026-10-25T00:00:00Z"}, headers=admin)
+    seg = closed_segment(env, device)
+    run_jobs(env, make_core("partial"))
+    (summary,) = api.get(f"/v1/segments/{seg}", headers=admin).json()["runs"]
+    assert (summary["status"], summary["result_status"]) == ("done", "partial")
+    run = api.get(f"/v1/runs/{summary['id']}", headers=admin).json()
+    assert run["status"] == "done" and run["is_current"] and run["result_status"] == "partial"
+    assert run["bouts"][-1]["trajectory_sides"] == [] and run["bouts"][0]["trajectory_sides"] == ["left"]
+    bouts = api.get(f"/v1/subjects/{people['A']}/bouts?from=2026-10-25T00:00:00Z", headers=people["a"]).json()
+    assert {b["result_status"] for b in bouts} == {"partial"}
+    last = max(bouts, key=lambda b: b["start_at"])
+    assert api.get(f"/v1/bouts/{last['id']}/trajectory", headers=people["a"]).status_code == 404
 
 
 def test_wear_edit_moves_bout_owner(env, api, admin, people, device):

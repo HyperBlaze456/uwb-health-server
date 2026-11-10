@@ -7,6 +7,8 @@ from uwbserver.pipeline import migrate, settings
 
 pytestmark = pytest.mark.db
 
+MIGRATIONS = sorted(p.name for p in migrate.migrations_dir().glob("[0-9][0-9][0-9]_*.sql"))
+
 
 def _snapshot(conn) -> list[tuple]:
     return conn.execute(
@@ -24,23 +26,24 @@ def test_rerun_changes_nothing(env):
     applied_before = env.scalar("SELECT count(*) FROM pipeline.migration")
     assert migrate.run(dbname=env.settings.db_name) == []
     assert _snapshot(env.conn("owner")) == before
-    assert env.scalar("SELECT count(*) FROM pipeline.migration") == applied_before == 7
+    assert env.scalar("SELECT count(*) FROM pipeline.migration") == applied_before == len(MIGRATIONS)
 
 
 def test_second_database_in_same_cluster(database):
     """역할은 클러스터 전체에 하나. 두 번째 빈 DB에 적용해도 오류가 없어야 함."""
     s = database
+    second = f"{s.db_name}2"
     with psycopg.connect(s.dsn("owner", dbname="postgres"), autocommit=True) as c:
-        c.execute("DROP DATABASE IF EXISTS uwb_test2 WITH (FORCE)")
-        c.execute("CREATE DATABASE uwb_test2")
+        c.execute(f"DROP DATABASE IF EXISTS {second} WITH (FORCE)")
+        c.execute(f"CREATE DATABASE {second}")
     settings.use(s)
     try:
-        assert len(migrate.run(dbname="uwb_test2")) == 7
-        assert migrate.run(dbname="uwb_test2") == []
+        assert len(migrate.run(dbname=second)) == len(MIGRATIONS)
+        assert migrate.run(dbname=second) == []
     finally:
         settings.use(None)
         with psycopg.connect(s.dsn("owner", dbname="postgres"), autocommit=True) as c:
-            c.execute("DROP DATABASE uwb_test2 WITH (FORCE)")
+            c.execute(f"DROP DATABASE {second} WITH (FORCE)")
 
 
 # 역할마다 쓰면 안 되는 곳(4.2절). (역할, SQL)

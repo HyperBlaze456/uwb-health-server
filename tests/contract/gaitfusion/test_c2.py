@@ -395,6 +395,22 @@ def test_fake_two_feet_fused_trajectory_clipped_at_zero():
     assert [p.name for p in reply.parts] == ["result", "traj-0-left", "traj-0-right"]
 
 
+@pytest.mark.parametrize(("mode", "want"), [("ok", "complete"), ("partial", "partial"), ("no_status", None)])
+def test_fake_result_status_modes(mode, want):
+    """ok는 status = complete. partial은 마지막 걷기 구간의 마지막 발 궤적을 빼고 status = partial. no_status는 status 없음."""
+    chunks = walking_both(12)
+    reply = fake_client(mode).analyze(context("both", ANCHORS), wire.join_records(chunks))
+    checked = rules.check_response(reply.parts, segment_sides="both", anchors_sent=True, t_last=12.0)
+    assert checked.result_status == want
+    (b,) = checked.bouts
+    if mode == "partial":
+        assert b.trajectories == (("left", "traj-0-left"),) and b.quality["deadline"] is True
+        assert [p.name for p in reply.parts] == ["result", "traj-0-left"]
+    else:
+        assert b.trajectories == (("left", "traj-0-left"), ("right", "traj-0-right"))
+    assert ("status" in json.loads(checked.result_bytes)) == (want is not None)
+
+
 def test_fake_is_deterministic():
     tc = TestClient(fake.create_app("ok"))
     ctype, body = encode_multipart(
@@ -547,6 +563,12 @@ def test_check_accepts_edges_and_keeps_unknown_fields():
     assert _check(_parts(_result(_bout(0.0, 1.0)), ("traj-0-left", _trj(t0=0.0, n=1001))), t_last=10.0 - 1e-9)
 
 
+@pytest.mark.parametrize(("extra", "want"), [({}, None), ({"status": "complete"}, "complete"), ({"status": "partial"}, "partial")])
+def test_check_result_status_is_optional(extra, want):
+    """7.2절: status는 선택. 있으면 complete·partial이고 Checked.result_status로 나옴."""
+    assert _check(_parts(_result(**extra))).result_status == want
+
+
 @pytest.mark.parametrize(
     ("sides", "anchors", "bout", "ok"),
     [
@@ -578,6 +600,11 @@ def test_check_mode_and_sides(sides, anchors, bout, ok):
         (_result(c2_version=True), "c2_version"),
         (_result(c2_version=1.0), "c2_version"),
         (_result(gaitfusion_version=None), "gaitfusion_version"),
+        (_result(status="timeout"), "status"),
+        (_result(status="Partial"), "status"),
+        (_result(status=None), "status"),
+        (_result(status=1), "status"),
+        (_result(status=["partial"]), "status"),
         (_result(summary=None), "summary"),
         (_result(bouts=None), "bouts"),
         (_result(["not an object"]), "bouts"),

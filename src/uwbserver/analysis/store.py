@@ -103,8 +103,8 @@ def next_bout_ids(conn: psycopg.Connection, n: int) -> list[int]:
 
 _RUN_COLS = (
     "id", "segment_id", "segment_revision", "input", "n_chunks_sent", "origin_head_us", "origin_at",
-    "gaitfusion_version", "core_version", "context", "summary", "status", "skip_reason", "result_path",
-    "result_bytes", "result_sha256", "started_at", "finished_at",
+    "gaitfusion_version", "core_version", "context", "summary", "status", "skip_reason", "result_status",
+    "result_path", "result_bytes", "result_sha256", "started_at", "finished_at",
 )  # fmt: skip
 
 
@@ -162,7 +162,7 @@ def run(conn: psycopg.Connection, run_id: int) -> dict | None:
         """
         SELECT r.id, r.segment_id, r.segment_revision, r.input, r.n_chunks_sent, r.origin_head_us, r.origin_at,
                r.gaitfusion_version, r.core_version, r.context, r.summary, r.status, r.skip_reason,
-               r.result_path, r.result_bytes, encode(r.result_sha256, 'hex') AS result_sha256,
+               r.result_status, r.result_path, r.result_bytes, encode(r.result_sha256, 'hex') AS result_sha256,
                r.started_at, r.finished_at,
                (cr.run_id IS NOT NULL) AS is_current
         FROM analysis.run r
@@ -189,7 +189,7 @@ def bouts_of_run(conn: psycopg.Connection, run_id: int) -> list[dict]:
 def runs_of_segment(conn: psycopg.Connection, segment_id: int) -> list[dict]:
     return conn.execute(
         """
-        SELECT id, status, skip_reason, input, gaitfusion_version, started_at, finished_at
+        SELECT id, status, skip_reason, result_status, input, gaitfusion_version, started_at, finished_at
         FROM analysis.run WHERE segment_id = %s ORDER BY id DESC
         """,
         (segment_id,),
@@ -202,7 +202,7 @@ def subject_bouts(
     """현재 run의 걷기 구간 중 그 착용자에게 귀속된 것(SG-9). 기간으로 먼저 좁힌 뒤 뷰를 씀(9절)."""
     return conn.execute(
         """
-        SELECT b.id, b.run_id, r.segment_id, b.start_at, b.end_at, b.sides, b.mode
+        SELECT b.id, b.run_id, r.segment_id, b.start_at, b.end_at, b.sides, b.mode, r.result_status
         FROM analysis.bout b
         JOIN analysis.current_run cr ON cr.run_id = b.run_id
         JOIN analysis.run r ON r.id = b.run_id

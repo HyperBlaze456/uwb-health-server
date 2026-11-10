@@ -13,7 +13,7 @@ app_router = APIRouter(prefix="/v1", tags=["analysis"])
 
 @app_router.get("/runs/{run_id}")
 def get_run(run_id: int, _: AdminUser, conn: Conn) -> dict:
-    """run과 걷기 구간 목록."""
+    """run과 걷기 구간 목록. result_status: complete·partial(궤적 일부가 빠짐)·null(응답에 없음, skipped)."""
     run = store.run(conn, run_id)
     if run is None:
         raise not_found()
@@ -36,7 +36,9 @@ def get_run_result(run_id: int, _: AdminUser, conn: Conn) -> Response:
 
 @app_router.get("/subjects/{subject_id}/bouts")
 def subject_bouts(subject_id: int, user: CurrentUser, conn: Conn, span: SpanParams, p: PageParams) -> list[dict]:
-    """현재 run의 걷기 구간 목록(시작, 끝, 발, 모드). 귀속은 SG-9."""
+    """현재 run의 걷기 구간 목록(시작, 끝, 발, 모드, 그 run의 result_status). 귀속은 SG-9.
+
+    result_status = partial이면 그 run의 어떤 걷기 구간은 궤적이 없는 발이 있을 수 있음(궤적 조회가 404)."""
     check_subject(user, subject_id)
     return store.subject_bouts(conn, subject_id, span.start, span.end, p.limit, p.before_id)
 

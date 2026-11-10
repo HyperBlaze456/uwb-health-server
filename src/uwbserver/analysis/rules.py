@@ -29,6 +29,7 @@ TRJ_SIDES = ("left", "right")  # 머리 side 0, 1
 SIDES = ("left", "right", "both")
 MODES = ("fused", "imu_only")
 SUBJECT_KEYS = ("height_m", "leg_length_m", "paretic_side")
+RESULT_STATUSES = ("complete", "partial")  # result.status. partial = 마감 시각에 끊겨 궤적 일부가 빠짐
 
 # 궤적 끝 시각(t0_s + (n − 1)/rate_hz)은 계산값이라 부동소수 오차가 생김. 1 µs(Head 시각의 단위)까지 봐줌.
 TIME_EPS_S = 1e-6
@@ -42,6 +43,7 @@ RESPONSE_RULES = (
     "result.json",  # result가 JSON 객체가 아님
     "c2_version",
     "gaitfusion_version",
+    "status",  # 있는데 complete·partial이 아님
     "summary",
     "bouts",  # 배열이 아님, 또는 항목이 객체가 아님
     "bouts.time",  # start_s·end_s가 유한한 수가 아님
@@ -116,6 +118,7 @@ class BoutOut:
 @dataclass(frozen=True, slots=True)
 class Checked:
     gaitfusion_version: str
+    result_status: str | None  # result.status. 없으면 None
     summary: dict
     bouts: tuple[BoutOut, ...]
     trajectories: dict[str, Trj]  # 파트 이름 → 머리
@@ -253,6 +256,9 @@ def check_response(
     version = doc.get("gaitfusion_version")
     if not isinstance(version, str) or version == "":
         raise ResponseInvalid("gaitfusion_version", repr(version))
+    status = doc.get("status")  # 선택. 있으면 complete·partial(null도 틀림)
+    if "status" in doc and not (isinstance(status, str) and status in RESULT_STATUSES):
+        raise ResponseInvalid("status", repr(status))
     summary = doc.get("summary")
     if not isinstance(summary, dict):
         raise ResponseInvalid("summary", f"not an object: {type(summary).__name__}")
@@ -328,7 +334,7 @@ def check_response(
             raise ResponseInvalid("trj.time", f"{name}: [{trj.t0_s}, {trj.end_s}] vs t_last={t_last}")
         trjs[name] = trj
 
-    return Checked(version, summary, tuple(out), trjs, result_bytes)
+    return Checked(version, status, summary, tuple(out), trjs, result_bytes)
 
 
 # --- 행 값 ---------------------------------------------------------------------

@@ -13,7 +13,7 @@ uv run pytest                                                # 시험. DB가 없
 uv run lint-imports                                          # import 규칙(SPEC 3.2)
 ```
 
-시험은 `.env`의 비밀번호로 같은 PostgreSQL에 `uwb_test` DB를 새로 만들어 씁니다. `.env`가 없으면 `cp .env.example .env`부터 합니다.
+시험은 `.env`의 비밀번호로 같은 PostgreSQL에 `uwb_test` DB를 새로 만들어 씁니다. 같은 DB 서버에서 시험을 둘 이상 동시에 돌리면 `TEST_DB_NAME=uwb_test_다른이름`으로 DB 이름을 나눕니다. `.env`가 없으면 `cp .env.example .env`부터 합니다.
 
 이미지를 빌드해 스택 전체를 띄우는 전 구간 시험(`tests/e2e/`)은 켤 때만 돕니다. 각자 다른 compose 프로젝트와 포트를 써서 개발 스택 옆에서 돌고, 끝나면 내립니다.
 

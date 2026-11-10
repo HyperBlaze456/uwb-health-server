@@ -3,7 +3,10 @@
     uv run python tools/fake_gaitfusion.py --host 0.0.0.0 --port 8100 [--mode ok]
 
 모드: create_app(mode) 인자, 없으면 환경 변수 FAKE_GAITFUSION_MODE, 기본 "ok".
-  ok             받은 묶음을 해독해 걷기 구간과 궤적을 만듦
+  ok             받은 묶음을 해독해 걷기 구간과 궤적을 만듦. result.status = "complete"
+  partial        ok처럼 하되 result.status = "partial", 궤적이 있는 마지막 걷기 구간에서 마지막 발의 궤적을 빼고
+                 그 구간 quality.deadline = true(진짜 gaitfusion이 마감 시각 540초에 끊긴 경우)
+  no_status      ok처럼 하되 result에 status가 없음(status를 보내기 전의 gaitfusion)
   422            {"reason": "fake_422"}
   500            본문 없는 500
   slow:<초>      그만큼 기다린 뒤 ok처럼
@@ -54,6 +57,7 @@ MALFORMED_RULES = (
     "result.json",
     "c2_version",
     "gaitfusion_version",
+    "status",
     "summary",
     "bouts",
     "bouts.time",
@@ -95,8 +99,8 @@ class Unanalyzable(Exception):
 
 
 def parse_mode(mode: str) -> tuple[str, float | str | None]:
-    """'ok' | '422' | '500' | 'slow:<초>' | 'malformed:<규칙>' → (종류, 값)."""
-    if mode in ("ok", "422", "500"):
+    """'ok' | 'partial' | 'no_status' | '422' | '500' | 'slow:<초>' | 'malformed:<규칙>' → (종류, 값)."""
+    if mode in ("ok", "partial", "no_status", "422", "500"):
         return mode, None
     kind, sep, arg = mode.partition(":")
     if sep and kind == "slow":
@@ -333,6 +337,7 @@ def analyze(ctx: dict, chunks: list[wire.Chunk], *, force_bout: bool = False) ->
     result = {
         "c2_version": 1,
         "gaitfusion_version": VERSION["gaitfusion_version"],
+        "status": "complete",
         "summary": {
             "n_imu": sum(f.count for c in chunks for f in c.imu_frames),
             "n_range": sum(len(c.ranges) for c in chunks),
@@ -343,6 +348,20 @@ def analyze(ctx: dict, chunks: list[wire.Chunk], *, force_bout: bool = False) ->
         "bouts": bouts,
     }
     return result, parts, t_last
+
+
+def cut_partial(result: dict, parts: list[Part]) -> list[Part]:
+    """partial 모드: status = "partial", 궤적이 있는 마지막 걷기 구간에서 마지막 발의 궤적을 뺌 → 남은 궤적 파트들.
+
+    궤적이 하나도 없으면 status만 바꿈. 걷기 구간 목록은 그대로(gaitfusion service.md 4절 "마감 시각").
+    """
+    result["status"] = "partial"
+    for b in reversed(result["bouts"]):
+        if b["trajectories"]:
+            dropped = b["trajectories"].pop()
+            b["quality"]["deadline"] = True
+            return [p for p in parts if p.name != dropped["part"]]
+    return parts
 
 
 # --- 형식이 틀린 응답 -----------------------------------------------------------
@@ -386,6 +405,8 @@ def malform(rule: str, ctx: dict, result: dict, parts: list[Part], t_last: float
             result["c2_version"] = 2
         case "gaitfusion_version":
             result["gaitfusion_version"] = ""
+        case "status":
+            result["status"] = "timeout"
         case "summary":
             result["summary"] = []
         case "bouts":
@@ -485,6 +506,10 @@ def respond(mode: str, content_type: str, body: bytes) -> Response:
         return JSONResponse({"reason": str(e)}, status_code=422)
 
     seed = hashlib.sha256(body).digest()
+    if kind == "partial":
+        parts = cut_partial(result, parts)
+    elif kind == "no_status":
+        del result["status"]
     if kind == "malformed" and arg not in ("multipart", "parts.first"):
         result_bytes, parts = malform(str(arg), ctx, result, parts, t_last)
     else:
@@ -527,7 +552,9 @@ def main() -> None:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8100)
     ap.add_argument(
-        "--mode", default=None, help="ok | 422 | 500 | slow:<s> | malformed:<rule> (기본: FAKE_GAITFUSION_MODE 또는 ok)"
+        "--mode",
+        default=None,
+        help="ok | partial | no_status | 422 | 500 | slow:<s> | malformed:<rule> (기본: FAKE_GAITFUSION_MODE 또는 ok)",
     )
     args = ap.parse_args()
     import uvicorn

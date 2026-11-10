@@ -112,7 +112,8 @@ uwb-health-server/
   SPEC.md  README.md
   pyproject.toml  compose.yaml  compose.dev.yaml  Caddyfile  .env.example  Dockerfile
   migrations/   001_pipeline.sql 002_registry.sql 003_intake.sql 004_segment.sql
-                005_analysis.sql 006_archive.sql 007_roles.sql          ← 10절 그대로
+                005_analysis.sql 006_archive.sql 007_roles.sql
+                008_analysis_result_status.sql                         ← 10절 그대로
   src/uwbserver/
     pipeline/   db.py files.py jobs.py clock.py settings.py migrate.py wire.py log.py alert.py
     registry/   rules.py store.py routes.py access.py
@@ -404,11 +405,13 @@ volumes: {certs: {}, pgdata: {}}
 
 | C2 응답 | 처리 |
 |---|---|
-| 200 | 7.2절 검사 → 결과 원문과 궤적 파일 쓰기(임시 이름 → fsync → 이름 바꾸기) → 한 트랜잭션: run(`done`)·bout·trajectory INSERT(COPY), 작업 `done`, `archive {run_id}` 작업 넣기, 보낸 뒤 구간 `revision`이 바뀌었으면 `analysis` 작업 다시 넣기 → 커밋 뒤 같은 구간의 옛 run 궤적 파일과 행 삭제 |
+| 200 | 7.2절 검사 → 결과 원문과 궤적 파일 쓰기(임시 이름 → fsync → 이름 바꾸기) → 한 트랜잭션: run(`done`, `result_status` = 응답의 `status`)·bout·trajectory INSERT(COPY), 작업 `done`, `archive {run_id}` 작업 넣기, 보낸 뒤 구간 `revision`이 바뀌었으면 `analysis` 작업 다시 넣기 → 커밋 뒤 같은 구간의 옛 run 궤적 파일과 행 삭제 |
 | 200인데 검사 실패 | 작업 `failed`(재시도 안 함), `last_error`에 어느 검사인지. 쓴 파일은 지움 |
 | 422 | 한 트랜잭션: run(`skipped`, `skip_reason` = 응답의 이유), 작업 `done`, `archive {run_id}` 작업 넣기 |
 | 400 | 작업 `failed`(재시도 안 함). 서버가 보낸 바이트가 C1을 어긴 것이므로 버그 |
 | 5xx, 시간 초과, 연결 실패 | 재시도(PL-2). 쓴 파일은 지움 |
+
+응답 `status`가 `partial`이어도(gaitfusion이 마감 시각에 끊겨 어떤 발의 궤적을 뺌) 처리는 200과 같습니다. run은 `done`이고 현재 run이 되며, 자동으로 다시 분석하지 않습니다. 앱은 `result_status`로 압니다(8절).
 
 - **AN-8 현재 run.** `analysis.current_run` 뷰 = 구간마다 id가 가장 큰 run. `is_current` 같은 열은 두지 않습니다.
 - **AN-9 재분석.** api의 재분석 요청은 `analysis {segment_id}` 작업을 넣을 뿐입니다. 새 run이 생기고 옛 run의 걷기 구간 행은 비교용으로 남으며, 궤적만 지웁니다.
@@ -509,6 +512,7 @@ volumes: {certs: {}, pgdata: {}}
 {
   "c2_version": 1,
   "gaitfusion_version": "1.3.0+gabc1234",
+  "status": "complete",
   "summary": {"n_imu": 359800, "n_range": 358100, "seq_gaps": 3, "sides": ["left"], "sensor_site": "lateral_ankle"},
   "bouts": [{
     "start_s": 812.40, "end_s": 871.15, "mode": "fused", "sides": "left",
@@ -525,6 +529,7 @@ volumes: {certs: {}, pgdata: {}}
 |---|---|
 | `c2_version` | 1 |
 | `gaitfusion_version` | 비지 않은 문자열 |
+| `status` | 없어도 됨. 있으면 `complete` 또는 `partial`(`null`도 틀림). 그대로 `analysis.run.result_status`에, 없으면 NULL. `partial` = gaitfusion이 자기 마감 시각(540초)에 끊겨 어떤 발의 궤적을 뺌. 걷기 구간 목록은 온전 |
 | `summary` | JSON 객체. 그대로 `analysis.run.summary`에 |
 | `bouts` | 배열(비어도 됨). `start_s` 오름차순. 앞 걷기 구간의 `end_s` < 다음 `start_s` |
 | `bouts[].start_s`, `end_s` | 유한한 수. 0 ≤ `start_s` < `end_s` ≤ `t_last`(7.1절) |
@@ -580,10 +585,10 @@ REST + JSON, 경로 `/v1/`. 시각은 UTC ISO 8601. 인증은 `Authorization: Be
 | `GET /v1/devices/{id}/health?from=&to=` | 1분 기록(최근 30일), 풀어서 | 본인, admin | intake |
 | `GET /v1/devices/{id}/surveys` | survey 블록 목록, 풀어서 | admin | intake |
 | `GET /v1/devices/{id}/rejected?from=&to=` | 거절한 묶음: 코드, 검사 단계, `detail` | admin | intake |
-| `GET /v1/segments?device=&from=&to=` · `GET /v1/segments/{id}` | 구간 목록 · 구간 상세(Tag, 배치, 빈자리, run 목록) | admin | segment |
+| `GET /v1/segments?device=&from=&to=` · `GET /v1/segments/{id}` | 구간 목록 · 구간 상세(Tag, 배치, 빈자리, run 목록. run마다 `result_status`) | admin | segment |
 | `POST /v1/segments/{id}/reanalyze` | 재분석 작업 넣기 → 202 `{segment_id, queued}`(이미 대기 중이면 `queued = false`). raw도 archive도 없으면 409 | admin | segment |
-| `GET /v1/runs/{id}` · `GET /v1/runs/{id}/result` | run과 걷기 구간 목록 · 결과 원문(gzip 그대로, `Content-Encoding: gzip`) | admin | analysis |
-| `GET /v1/subjects/{id}/bouts?from=&to=` | 현재 run의 걷기 구간 목록(시작, 끝, 발, 모드). 귀속은 SG-9 | 본인, admin | analysis |
+| `GET /v1/runs/{id}` · `GET /v1/runs/{id}/result` | run(`result_status` 포함)과 걷기 구간 목록 · 결과 원문(gzip 그대로, `Content-Encoding: gzip`) | admin | analysis |
+| `GET /v1/subjects/{id}/bouts?from=&to=` | 현재 run의 걷기 구간 목록(시작, 끝, 발, 모드, 그 run의 `result_status`). `partial`이면 어떤 걷기 구간은 궤적이 없는 발이 있을 수 있음(궤적 조회 404). 귀속은 SG-9 | 본인, admin | analysis |
 | `GET /v1/bouts/{id}/trajectory?side=&rate=25` | 한 발 또는 있는 발 전부의 궤적. `rate` 25(기본)·50·100. 응답은 `{bout_id, trajectories: [{side, rate_hz, t0, n, channels: {px: [...], ...}}]}`(발이 하나여도 배열). 계산 못 한 표본(NaN)은 `null` | 본인, admin | analysis |
 
 ## 9. 속도 요구
@@ -607,7 +612,7 @@ REST + JSON, 경로 `/v1/`. 시각은 UTC ISO 8601. 인증은 `Authorization: Be
 
 ## 10. DB 스키마 (1단계)
 
-`migrations/001–007`로 그대로 옮깁니다. 파일 하나 = 단계 하나 = 스키마 하나입니다. 이 DDL은 PostgreSQL 17에 오류 없이 적용됨을 확인했습니다.
+`migrations/001–008`로 그대로 옮깁니다. 파일 하나 = 단계 하나 = 스키마 하나입니다. 이 DDL은 PostgreSQL 17에 오류 없이 적용됨을 확인했습니다.
 
 공통 규칙:
 - **단위**: SI. 열 이름 끝에 단위(`_m`, `_s`, `_us`, `_ms`, `_hz`). 접미가 없는 비율은 0–1.
@@ -1089,6 +1094,19 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA registry, pipeline TO api_rw;
 -- analysis.*(trajectory 제외) UPDATE·DELETE, registry.*(app_token 제외) DELETE, segment.* DELETE.
 ```
 
+### 008_analysis_result_status.sql
+
+15절 정할 것 7(2026-11-10)로 더한 열.
+
+```sql
+-- 응답 result.status(7.2절). 'partial' = gaitfusion이 자기 마감 시각에 끊겨 궤적 일부가 빠짐(걷기 구간 목록은 온전).
+-- NULL = 응답에 없음(옛 gaitfusion), skipped run, 이 파일 전에 만든 run.
+-- 표에 열만 더하므로 새 GRANT는 없음(007의 표 권한이 새 열에도 미침).
+ALTER TABLE analysis.run
+  ADD COLUMN result_status text CHECK (result_status IN ('complete','partial')),
+  ADD CHECK (status = 'done' OR result_status IS NULL);
+```
+
 관계:
 
 ```
@@ -1139,7 +1157,9 @@ intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이
 6. 배치 기다리기: system 블록 없이 닫힌 구간은 작업이 미뤄지고, 블록이 오면 그 좌표로 보냄. 1시간이 지나면 `anchors = null`(AN-3).
 7. C2 계약 시험(`tests/contract/gaitfusion/`): 요청 파트 순서와 `context` 필드, 응답 검사 규칙 각각. 진짜 gaitfusion 이미지가 있으면 같은 시험을 그것으로도 돌림.
 8. 속도: 1시간 구간 run의 DB 트랜잭션이 50 ms 이하(9절).
-9. 진짜 gaitfusion 전 구간 시험(`tests/e2e/test_real_gaitfusion.py`, 이미지 이름을 줄 때만): gaitfusion 합성 보행으로 만든 양발 기록(`tests/e2e/data/walk_two_feet.*`, 만든 판과 해시를 같이 둠)을 받기로 보내 구간 → 분석 → 보관 → 앱 궤적 조회까지. 이어서 30일 삭제가 지우는 원본 행을 지우고 재분석하면 보관본(수 분짜리 seq 빈자리)으로 같은 걷기 구간과 궤적이 나옴(AR-8). 가짜 Head(TL-1)의 보행 신호는 형식 시험용이라 진짜 서비스가 걸음으로 알아보지 못하므로 이 파일을 씁니다.
+9. 진짜 gaitfusion 전 구간 시험(`tests/e2e/test_real_gaitfusion.py`, 이미지 이름을 줄 때만): gaitfusion 합성 보행으로 만든 양발 기록(`tests/e2e/data/walk_two_feet.*`, 만든 판과 해시를 같이 둠)을 받기로 보내 구간 → 분석(run의 `result_status`가 `complete`) → 보관 → 앱 궤적 조회까지. 이어서 30일 삭제가 지우는 원본 행을 지우고 재분석하면 보관본(수 분짜리 seq 빈자리)으로 같은 걷기 구간과 궤적이 나옴(AR-8). 가짜 Head(TL-1)의 보행 신호는 형식 시험용이라 진짜 서비스가 걸음으로 알아보지 못하므로 이 파일을 씁니다.
+
+10. 응답 `status`: `complete` → run `result_status = 'complete'`. `partial`(가짜 gaitfusion이 한 발 궤적을 뺌) → run `done`, 현재 run, `result_status = 'partial'`, 다시 분석하는 작업 없음, 앱 API(run, 구간 상세, 착용자의 걷기 구간 목록)에 보임. 없으면 NULL. 다른 값 → 바로 `failed`(2의 규칙 하나). skipped run은 NULL(AN-7, 7.2절).
 
 **M4 원본 보관과 삭제 (AR, TL-4)**
 1. 보관 범위: 걷기 구간 ± 15초, 구간 안으로 자름, 겹침 합침, 이미 있는 범위 제외. 파일의 sha256이 행과 같음.
@@ -1217,7 +1237,7 @@ intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이
 ## 14. 2단계 초안: 분석 특징 (만들지 않음)
 
 gaitfusion의 특징 목록([gait-features.md](../gaitfusion/gait-features.md))이 정해지면 이 절을 별도 스펙으로 확정합니다. 1단계와의 약속은 셋입니다.
-- 2단계는 1단계 표를 바꾸지 않고 **표를 더합니다**(새 마이그레이션 008부터).
+- 2단계는 1단계 표를 바꾸지 않고 **표를 더합니다**(새 마이그레이션 009부터. 008은 1단계의 `result_status`).
 - 특징 표는 결과 원문 파일(AN-10)에서 채울 수 있어야 합니다. 그래서 2단계를 켜는 날 gaitfusion을 다시 돌리지 않고 지난 run을 채울 수 있습니다(같은 `c2_version`일 때).
 - 2단계 표도 "결과는 추가만", "선택적인 것은 행으로"를 따릅니다.
 
@@ -1244,7 +1264,7 @@ gaitfusion의 특징 목록([gait-features.md](../gaitfusion/gait-features.md))�
 1단계 DDL 위에 오류 없이 적용됨을 확인했습니다. 열의 뜻과 근거는 gait-features.md입니다.
 
 ```sql
--- 008_analysis_features.sql (초안)
+-- 009_analysis_features.sql (초안)
 ALTER TABLE pipeline.job DROP CONSTRAINT job_kind_check;
 ALTER TABLE pipeline.job ADD CONSTRAINT job_kind_check CHECK (kind IN ('analysis','archive','summary'));
 ALTER TABLE pipeline.job ADD COLUMN device_id text, ADD COLUMN date_from date, ADD COLUMN date_to date;
@@ -1469,7 +1489,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA summary TO api_rw;
 4. 원격 백업 저장소: S3 호환 오브젝트 스토리지(버전 보존 기능) 또는 두 번째 머신.
 5. 30일 삭제를 켜는 때(AR-7의 조건을 언제 확인할지).
 6. 보관한 범위 안의 빈자리를 늦은 묶음이 메운 경우(예: 해독기를 고친 뒤 IN-10으로 다시 넣은 묶음). `archive.range`는 seq 구간이고 겹침을 막으므로(AR-3) 그 묶음을 보관 파일에 넣을 길이 없습니다. 지금은 AR-6의 `archive_incomplete` 조건으로 그 구간의 raw를 지우지 않고 남깁니다. 정할 것: 보충 범위를 허용할지(겹침 규칙을 바꿈), 아니면 지금처럼 raw를 남길지.
-7. gaitfusion의 `status: "partial"` 응답. gaitfusion은 자기 마감 시각(540초) 안에 못 끝낸 발의 궤적을 빼고 `result.status = "partial"`로 답합니다(걷기 구간 목록은 그대로). 1단계 서버는 이 필드를 보지 않으므로(7.2절 표에 없음) 궤적이 빠진 run이 `done`이고 "현재"가 됩니다. 걷기 원본은 걷기 구간 시각으로 보관하므로 잃지 않습니다. 정할 것: 이 표시를 run에 저장해 앱에 보일지, 나중에 자동으로 다시 분석할지(gaitfusion은 같은 요청의 답을 15분 동안 다시 쓰므로 그 뒤에), 아니면 지금처럼 둘지.
+7. ~~gaitfusion의 `status: "partial"` 응답. gaitfusion은 자기 마감 시각(540초) 안에 못 끝낸 발의 궤적을 빼고 `result.status = "partial"`로 답합니다(걷기 구간 목록은 그대로). 1단계 서버는 이 필드를 보지 않으므로(7.2절 표에 없음) 궤적이 빠진 run이 `done`이고 "현재"가 됩니다. 걷기 원본은 걷기 구간 시각으로 보관하므로 잃지 않습니다. 정할 것: 이 표시를 run에 저장해 앱에 보일지, 나중에 자동으로 다시 분석할지(gaitfusion은 같은 요청의 답을 15분 동안 다시 쓰므로 그 뒤에), 아니면 지금처럼 둘지.~~ 정함(2026-11-10): run에 저장해 앱에 보이고, 자동으로 다시 분석하지 않습니다. `analysis.run.result_status`(`008`), 7.2절 표의 `status`, AN-7, 8절. `partial` run도 `done`이고 현재 run이 됩니다. 다시 분석하려면 재분석 요청(AN-9)을 씁니다.
 
 확인할 것(구현 중):
 1. 권장 VM 디스크의 `fdatasync` 시간(9절). 20 ms를 넘으면 디스크 종류를 바꿉니다.

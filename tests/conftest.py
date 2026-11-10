@@ -1,7 +1,7 @@
 """시험 공용 준비물.
 
 DB 시험은 compose.dev의 PostgreSQL(localhost:5432)에 시험용 DB `uwb_test`를 새로 만들고
-migrations/를 적용해 씁니다. 시험마다 표를 비우고, 파일 뿌리는 tmp 폴더, 시계는 FakeClock입니다.
+migrations/를 적용해 씁니다. 이름은 환경 변수 TEST_DB_NAME으로 바꿀 수 있습니다(같은 DB 서버에서 시험을 둘 이상 동시에 돌릴 때). 시험마다 표를 비우고, 파일 뿌리는 tmp 폴더, 시계는 FakeClock입니다.
 DB가 없으면 db 시험은 건너뜁니다:  docker compose -f compose.yaml -f compose.dev.yaml up -d db
 """
 
@@ -17,7 +17,7 @@ import pytest
 from uwbserver.pipeline import clock, migrate, settings
 from uwbserver.pipeline.settings import Role, Settings
 
-TEST_DB = "uwb_test"
+TEST_DB = os.environ.get("TEST_DB_NAME", "uwb_test")
 T0 = datetime(2026, 10, 26, 0, 0, tzinfo=UTC)
 
 

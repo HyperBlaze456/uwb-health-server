@@ -238,7 +238,7 @@ def tag_rows(conn: psycopg.Connection, segment_id: int) -> list[dict]:
 def run_rows(conn: psycopg.Connection, segment_id: int) -> list[dict]:
     return conn.execute(
         """
-        SELECT r.id, r.status, r.skip_reason, r.input, r.gaitfusion_version, r.started_at, r.finished_at,
+        SELECT r.id, r.status, r.skip_reason, r.result_status, r.input, r.gaitfusion_version, r.started_at, r.finished_at,
                (SELECT count(*) FROM analysis.bout b WHERE b.run_id = r.id) AS n_bouts
         FROM analysis.run r WHERE r.segment_id = %s ORDER BY r.id DESC
         """,

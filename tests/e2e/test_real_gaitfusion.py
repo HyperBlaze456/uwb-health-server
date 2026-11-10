@@ -95,9 +95,9 @@ def test_real_gaitfusion(stack):
         "SELECT id, device_id, state, n_chunks, n_missing_chunks, sides FROM segment.segment")
     assert (state, int(n_chunks), int(n_missing), sides) == ("closed", META["n_chunks"], 0, META["sides"])
 
-    [[run1, status, source, sent, version]] = s.rows(
-        "SELECT id, status, input, n_chunks_sent, gaitfusion_version FROM analysis.run")
-    assert (status, source, int(sent)) == ("done", "raw", META["n_chunks"])
+    [[run1, status, source, sent, version, result_status]] = s.rows(
+        "SELECT id, status, input, n_chunks_sent, gaitfusion_version, result_status FROM analysis.run")
+    assert (status, source, int(sent), result_status) == ("done", "raw", META["n_chunks"], "complete")
     assert version and not version.startswith("fake"), version
 
     # 걷기 구간: 합성기가 걷게 한 시각과 맞고, 앵커가 있으니 융합, 양발
@@ -145,9 +145,9 @@ def test_real_gaitfusion(stack):
     wait_until(lambda: s.psql("SELECT count(*) FROM archive.cut") == "2", 300, "archive.cut after reanalysis")
 
     # AN-4: 보관본으로 분석. 같은 걷기 구간(시각까지 같음)
-    [[run2, status, source, sent]] = s.rows(
-        f"SELECT id, status, input, n_chunks_sent FROM analysis.run WHERE id <> {run1}")
-    assert (status, source, int(sent)) == ("done", "archive", sum(n for *_, n in ranges))
+    [[run2, status, source, sent, result_status]] = s.rows(
+        f"SELECT id, status, input, n_chunks_sent, result_status FROM analysis.run WHERE id <> {run1}")
+    assert (status, source, int(sent), result_status) == ("done", "archive", sum(n for *_, n in ranges), "complete")
     again = s.rows(f"SELECT start_at, end_at, mode, sides FROM analysis.bout WHERE run_id = {run2} ORDER BY idx")
     assert again == [[b[5], b[6], b[3], b[4]] for b in bouts]
 

@@ -1,4 +1,4 @@
-"""M3 분석 호출 (AN, TL-2). SPEC 11절 M3 시험 1–6, 8."""
+"""M3 분석 호출 (AN, TL-2). SPEC 11절 M3 시험 1–6, 8, 10."""
 
 import gzip
 import hashlib
@@ -49,7 +49,59 @@ def test_skipped_on_422(env, device):
     assert run_jobs(env, make_core("422"), ("analysis",)) == ["skipped"]
     (run,) = _runs(env)
     assert run["status"] == "skipped" and run["skip_reason"] and run["result_path"] is None
+    assert run["result_status"] is None
     assert env.scalar("SELECT count(*) FROM pipeline.job WHERE kind = 'archive'") == 1
+
+
+def test_result_status_complete(env, device):
+    """M3-10: 응답 result.status = complete → run.result_status = complete."""
+    closed_segment(env, device)
+    assert run_jobs(env, make_core(), ("analysis",)) == ["done"]
+    (run,) = _runs(env)
+    assert run["result_status"] == "complete"
+
+
+def test_result_status_partial_is_done_and_current(env, device):
+    """M3-10: partial → run은 done이고 현재 run, result_status = partial. 다시 분석하지 않음. 빠진 궤적은 행·파일이 없음."""
+    seg = closed_segment(env, device)
+    assert run_jobs(env, make_core("partial"), ("analysis",)) == ["done"]
+    (run,) = _runs(env)
+    assert (run["status"], run["result_status"]) == ("done", "partial")
+    assert env.scalar("SELECT run_id FROM analysis.current_run WHERE segment_id = %s", (seg,)) == run["id"]
+    n_bouts = env.scalar("SELECT count(*) FROM analysis.bout WHERE run_id = %s", (run["id"],))
+    assert env.scalar("SELECT count(*) FROM analysis.trajectory") == n_bouts - 1  # 한 발 구간: 마지막 구간의 궤적이 빠짐
+    assert len(list(env.data_root.rglob("*.trj"))) == n_bouts - 1
+    assert env.q("SELECT kind FROM pipeline.job WHERE state = 'queued'") == [{"kind": "archive"}]
+
+
+def test_result_status_absent_is_null(env, device):
+    """M3-10: status가 없는 응답(옛 gaitfusion) → run.result_status는 NULL."""
+    closed_segment(env, device)
+    assert run_jobs(env, make_core("no_status"), ("analysis",)) == ["done"]
+    (run,) = _runs(env)
+    assert run["status"] == "done" and run["result_status"] is None
+
+
+def test_result_status_db_checks(env, device):
+    """008의 CHECK: 값은 complete·partial·NULL, skipped run은 NULL만."""
+    import psycopg
+
+    closed_segment(env, device)
+    run_jobs(env, make_core(), ("analysis",))
+    (run,) = _runs(env)
+    cols = [k for k in run if k != "id"]
+
+    def copy(**change: str) -> None:
+        """그 run 행을 바꿔 새 행으로 넣음(id는 새로)."""
+        exprs = ", ".join(change.get(c, c) for c in cols)
+        env.q(f"INSERT INTO analysis.run ({', '.join(cols)}) SELECT {exprs} FROM analysis.run WHERE id = %s", (run["id"],))
+
+    copy(result_status="'partial'", result_path="'/data/result/a.json.gz'")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        copy(result_status="'timeout'", result_path="'/data/result/b.json.gz'")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        copy(status="'skipped'", skip_reason="'x'", result_path="NULL", result_status="'complete'")
+    copy(status="'skipped'", skip_reason="'x'", result_path="NULL", result_status="NULL")
 
 
 def test_500_retries_then_fails(env, device):
