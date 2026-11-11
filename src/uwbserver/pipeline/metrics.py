@@ -11,11 +11,13 @@ DB·HTTP를 모르는 순수 코드입니다. 파일은 지표 목록을 읽기�
 - formats_of: 응답의 summary.formats → 표마다 형식(MC-3).
 - normalize: 저장된 줄 하나 → {지표 id: 값}(FT-4).
 - inspect: 줄 하나에서 틀린 값의 수와 목록에 없는 필드 이름(FT-3).
+- period_values: 고른 걷기 구간과 그 줄 → period 지표마다 값(RP-3). 시스템의 수치 계산은 모두 여기서 함.
 """
 
 import math
 import re
-from collections.abc import Mapping
+import statistics
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -409,3 +411,172 @@ def inspect(catalog: Catalog, level: str, fmt: str, record: Mapping) -> tuple[in
         if raw is not None and _value(m, raw, scale) is None:
             bad += 1
     return bad, sorted(k for k in record if k not in known)
+
+
+# --- 기간의 지표 값 (RP-3) ------------------------------------------------------------
+
+STRIDE = "stride"  # 주 발과 보고할 발을 정하는 줄의 종류(RP-3 "보폭 줄이 더 많은 발")
+SIDES = ("left", "right")  # 보고하는 순서
+GIVEN = {"period.wear_time_s": "wear_time_s"}  # rule given: 지표 id → period_values의 인자
+
+
+@dataclass(frozen=True)
+class Record:
+    """저장된 줄 하나를 normalize로 푼 것. values의 키는 지표 id(예 stride.duration_s)."""
+
+    side: str | None
+    values: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class BoutData:
+    """기간에 든 걷기 구간 하나(RP-2가 고름). records는 줄의 종류(level) → 그 구간의 줄."""
+
+    duration_s: float
+    mode: str  # fused · imu_only
+    records: Mapping[str, Sequence[Record]] = field(default_factory=dict)
+
+    def feet(self) -> frozenset[str]:
+        """이 구간의 보폭 줄에 나온 발(left·right)."""
+        return frozenset(r.side for r in self.records.get(STRIDE, ()) if r.side in SIDES)
+
+    def main_foot(self) -> str | None:
+        """주 발: 보폭 줄이 더 많은 발, 같으면 왼발. 값이 null인 줄도 셈. 왼발·오른발 줄이 없으면 None(발 없는 줄)."""
+        sides = [r.side for r in self.records.get(STRIDE, ())]
+        left, right = sides.count("left"), sides.count("right")
+        if left == right == 0:
+            return None
+        return "left" if left >= right else "right"
+
+
+@dataclass(frozen=True)
+class Value:
+    """지표 값 하나(RP-3의 형식). value가 None이면 reason(no_data · needs_both_feet)."""
+
+    metric: str
+    side: str | None
+    value: float | int | None
+    unit: str
+    n: int
+    sufficient: bool
+    trust: str
+    where: Mapping[str, object]
+    reason: str | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        out = {"metric": self.metric, "side": self.side, "value": self.value, "unit": self.unit, "n": self.n,
+               "sufficient": self.sufficient, "trust": self.trust, "where": dict(self.where)}  # fmt: skip
+        if self.value is None:
+            out["reason"] = self.reason
+        return out
+
+
+def _result(m: Metric, side: str | None, value: float | int | None, n: int, reason: str = "no_data") -> Value:
+    if value is None:
+        return Value(m.id, side, None, m.unit, 0, False, m.trust, dict(m.where), reason)
+    return Value(m.id, side, value, m.unit, n, n >= (m.min_n or 1), m.trust, dict(m.where))
+
+
+def _in_where(where: Mapping[str, object], b: BoutData) -> bool:
+    """where의 조건: bout_min_s 이상, bout_max_s 미만, mode가 같음. 없으면 전부."""
+    lo, hi, mode = where.get("bout_min_s"), where.get("bout_max_s"), where.get("mode")
+    return (lo is None or b.duration_s >= lo) and (hi is None or b.duration_s < hi) and (mode is None or b.mode == mode)
+
+
+def _quantile(values: Sequence[float], q: float) -> float:
+    """가까운 두 순위 사이의 선형 보간(statistics.quantiles의 inclusive, numpy 기본과 같음)."""
+    xs = sorted(values)
+    h = (len(xs) - 1) * q
+    lo = math.floor(h)
+    hi = min(lo + 1, len(xs) - 1)
+    return xs[lo] + (h - lo) * (xs[hi] - xs[lo])
+
+
+def _spread(rule: str, xs: Sequence[float]) -> float | None:
+    """걷기 구간 하나의 표본 표준편차(sd) 또는 변동 계수(cv). 값이 3개보다 적거나 평균이 0이면(cv) None."""
+    if len(xs) < 3:
+        return None
+    sd = statistics.stdev(xs)
+    if rule == "sd":
+        return sd
+    mean = statistics.fmean(xs)
+    return None if mean == 0 else sd / mean
+
+
+def _of_bout(m: Metric, level: str | None, b: BoutData, side: str | None) -> list[float]:
+    """걷기 구간 하나에서 이 지표의 from 값들. 줄의 값은 그 발(by_side) 또는 주 발의 줄만, null은 뺌."""
+    if m.from_ == BOUT_DURATION:
+        return [b.duration_s]
+    foot = side if m.by_side else b.main_foot()
+    return [v for r in b.records.get(level, ()) if r.side == foot and (v := r.values.get(m.from_)) is not None]
+
+
+def _compute(m: Metric, level: str | None, bouts: Sequence[BoutData], side: str | None) -> Value:
+    """rule 하나의 계산(RP-3의 표). bouts는 기간의 모든 걷기 구간."""
+    if m.needs == "both_feet":
+        both = [b for b in bouts if b.feet() == frozenset(SIDES)]
+        if bouts and not both:
+            return _result(m, side, None, 0, "needs_both_feet")
+        bouts = both
+    per_bout = [_of_bout(m, level, b, side) for b in bouts if _in_where(m.where, b)]
+
+    if m.rule == "ratio":  # where에 맞는 구간의 합 ÷ 모든 구간의 합. n은 모든 구간의 수
+        total = math.fsum(math.fsum(_of_bout(m, level, b, side)) for b in bouts)
+        if total <= 0:
+            return _result(m, side, None, 0)
+        return _result(m, side, math.fsum(math.fsum(xs) for xs in per_bout) / total, len(bouts))
+    if m.rule in {"cv", "sd"}:  # 구간마다 내고 그 중앙값. n은 쓴 구간의 수
+        spreads = [x for xs in per_bout if (x := _spread(m.rule, xs)) is not None]
+        return _result(m, side, _quantile(spreads, 0.5) if spreads else None, len(spreads))
+
+    values = [x for xs in per_bout for x in xs]
+    if m.rule == "cadence":  # 보폭 시간마다 120 ÷ 보폭 시간
+        values = [120.0 / d for d in values if d > 0]
+    if not values:
+        return _result(m, side, None, 0)
+    if m.rule == "count":
+        return _result(m, side, len(values), len(values))
+    if m.rule == "sum":
+        value = math.fsum(values)
+    elif m.rule == "max":
+        value = float(max(values))
+    else:
+        value = _quantile(values, {"median": 0.5, "cadence": 0.5, "p90": 0.9, "p95": 0.95}[m.rule])
+    return _result(m, side, value, len(values))
+
+
+def period_values(catalog: Catalog, bouts: Sequence[BoutData], *, wear_time_s: float | None) -> list[Value]:
+    """기간의 걷기 구간과 그 줄 → period 지표마다 값(RP-3). by_side 지표는 발마다 하나.
+
+    순수 함수: DB·파일을 모르고 입력을 바꾸지 않으며, 걷기 구간과 줄의 순서에 결과가 매이지 않습니다.
+    일별 값(SM)과 보고서(RP)가 같은 숫자를 얻도록 둘 다 이것만 부릅니다. 돌려주는 순서는 지표 목록의 순서,
+    발은 왼발·오른발. 보고할 발은 where와 상관없이 기간의 보폭 줄에 나온 발이고, 하나도 없으면 발 없는 no_data 값 하나.
+    """
+    bouts = tuple(bouts)
+    feet = [side for side in SIDES if any(side in b.feet() for b in bouts)]
+    given = {"wear_time_s": wear_time_s}
+    out: list[Value] = []
+    for m in catalog.metrics_of(PERIOD):
+        if m.rule == "given":
+            if m.id not in GIVEN:
+                raise ValueError(f"{m.id}: rule given인데 넘겨받는 값이 정해지지 않음(GIVEN에 없음)")
+            value = given[GIVEN[m.id]]
+            out.append(_result(m, None, None if value is None else float(value), 1))
+            continue
+        if m.rule not in RULES:
+            raise ValueError(f"{m.id}: rule {m.rule!r}는 RP-3에 없음")
+        level = None
+        if m.from_ != BOUT_DURATION:
+            src = catalog.metric(m.from_) if m.from_ else None
+            if src is None:
+                raise ValueError(f"{m.id}: from {m.from_!r}가 지표 목록에 없음")
+            level = src.level
+        if not m.by_side:
+            out.append(_compute(m, level, bouts, None))
+        elif level is None:
+            raise ValueError(f"{m.id}: by_side는 줄의 값에서 계산하는 지표만(from이 {BOUT_DURATION})")
+        elif not feet:
+            out.append(_result(m, None, None, 0))
+        else:
+            out += [_compute(m, level, bouts, side) for side in feet]
+    return out
