@@ -8,7 +8,7 @@ DB가 아니라 파일입니다. 뿌리(<data root>/papers/) 아래:
     passages/<key>.jsonl 대목. 줄마다 {"id": "<key>#<순번>", "page": 정수 또는 null, "text": ...}
     index/               검색 색인(캐시). meta.json + vectors.f32. 지우고 다시 만들면 같은 결과
 
-순수 계산(대목 나누기, 대신 쓰는 벡터 함수, 유사도와 순위)과 파일 읽고 쓰기를 한 파일에 두되
+순수 계산(대목 나누기, 대신 쓰는 벡터 함수, 유사도와 순위, 단어 맞춤 BM25, 순위 합치기)과 파일 읽고 쓰기를 한 파일에 두되
 나눠 둡니다. 순수 부분은 파일을 모르므로 따로 단위 시험합니다.
 
 대목을 수치 벡터로 바꾸는 함수(Embedder)는 바꿔 끼웁니다. 진짜 모델은 아직 고르지 않았고(SPEC 14.10 순서 15),
@@ -18,6 +18,7 @@ DB가 아니라 파일입니다. 뿌리(<data root>/papers/) 아래:
 
 import hashlib
 import json
+import math
 import re
 import sys
 import tomllib
@@ -154,6 +155,82 @@ def rank(query: Sequence[float], vectors: Sequence[Sequence[float]], k: int) -> 
     scores = [cosine(query, v) for v in vectors]
     order = sorted(range(len(scores)), key=lambda i: (-scores[i], i))
     return [(i, scores[i]) for i in order[:k]]
+
+
+_TOKEN_RE = re.compile(r"[^\W_]+")
+
+
+def tokenize(text: str) -> list[str]:
+    """단어 맞춤(BM25)용 낱말: 소문자로 바꾸고 글자·숫자가 아닌 것(밑줄 포함)에서 자릅니다. 어간 줄이기는 하지 않습니다."""
+    return _TOKEN_RE.findall(text.lower())
+
+
+@dataclass(frozen=True, slots=True)
+class Bm25:
+    """대목들의 BM25 통계(RP-6). 색인을 읽을 때 대목 글에서 한 번 만들고 여러 번 찾는 데 다시 씁니다.
+
+    idf = ln(1 + (N − df + 0.5) / (df + 0.5)) (늘 0보다 큼),
+    점수 = Σ idf · tf·(k1+1) / (tf + k1·(1 − b + b·길이/평균 길이)). 질문의 같은 낱말은 한 번만 셉니다.
+    """
+
+    tf: list[dict[str, int]]  # 대목마다 낱말 → 나온 횟수
+    lengths: list[int]
+    df: dict[str, int]  # 낱말 → 그 낱말이 든 대목 수
+    avgdl: float
+    k1: float = 1.5
+    b: float = 0.75
+
+    @classmethod
+    def build(cls, texts: Sequence[str]) -> "Bm25":
+        tf: list[dict[str, int]] = []
+        df: dict[str, int] = {}
+        for text in texts:
+            counts: dict[str, int] = {}
+            for t in tokenize(text):
+                counts[t] = counts.get(t, 0) + 1
+            tf.append(counts)
+            for t in counts:
+                df[t] = df.get(t, 0) + 1
+        lengths = [sum(c.values()) for c in tf]
+        avgdl = sum(lengths) / len(lengths) if lengths else 0.0
+        return cls(tf, lengths, df, avgdl)
+
+    def _score(self, terms: list[tuple[str, float]], i: int) -> float:
+        counts, s = self.tf[i], 0.0
+        norm = self.k1 * (1 - self.b + self.b * self.lengths[i] / self.avgdl) if self.avgdl else self.k1
+        for term, idf in terms:
+            f = counts.get(term, 0)
+            if f:
+                s += idf * f * (self.k1 + 1) / (f + norm)
+        return s
+
+    def rank(self, query: str, positions: Sequence[int]) -> list[tuple[int, float]]:
+        """positions의 대목 가운데 질문 낱말이 하나라도 든 것만, 점수가 높은 순으로 (위치, 점수). 같으면 앞의 위치가 먼저."""
+        n = len(self.tf)
+        terms = [
+            (t, math.log(1 + (n - self.df[t] + 0.5) / (self.df[t] + 0.5)))
+            for t in dict.fromkeys(tokenize(query))
+            if t in self.df
+        ]
+        if not terms:
+            return []
+        scored = [(i, self._score(terms, i)) for i in positions]
+        return sorted(((i, s) for i, s in scored if s > 0), key=lambda x: (-x[1], x[0]))
+
+
+RRF_C = 60
+
+
+def fuse(rankings: Sequence[Sequence[int]], c: int = RRF_C) -> list[tuple[int, float]]:
+    """여러 순위를 순위 역수의 합으로 합칩니다(RP-6): 점수 = Σ 1/(c + 순위), 순위는 1부터.
+
+    어느 순위에 없는 항목은 그 순위의 몫이 없습니다. 점수가 같으면 위치(대목 순서)가 앞의 것이 먼저.
+    """
+    scores: dict[int, float] = {}
+    for ranking in rankings:
+        for r, i in enumerate(ranking, 1):
+            scores[i] = scores.get(i, 0.0) + 1 / (c + r)
+    return sorted(scores.items(), key=lambda x: (-x[1], x[0]))
 
 
 # ================================================================ 목록과 대목
@@ -334,26 +411,78 @@ def build_index(root: Path, embedder: Embedder) -> int:
     return len(passages)
 
 
+METHODS = ("hybrid", "bm25", "vector")
+
+
 @dataclass(frozen=True, slots=True)
 class Hit:
+    """찾은 대목 하나. score의 뜻은 방식에 따름: hybrid는 순위 역수의 합, bm25는 BM25 점수, vector는 코사인.
+
+    bm25_rank, vector_rank는 찾은 범위(keys) 안의 각 순위(1부터)이고, 그 순위에 없거나 그 방식을 쓰지 않았으면 None.
+    """
+
     passage: Passage
     score: float
+    bm25_rank: int | None = None
+    vector_rank: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class Index:
+    """읽어 둔 색인. 한 번 읽으면 파일을 다시 읽지 않고 여러 번 찾을 수 있습니다(대화 하나에서 여러 번 찾기, RP-6).
+
+    낡았는지는 읽을 때(load_index) 한 번 봅니다. embedder가 None이면 벡터로 찾을 때 embedder_name으로 고릅니다.
+    """
+
     embedder_name: str
     dim: int
+    keys: tuple[str, ...]  # 목록의 논문 key, 목록 순서
     passages: list[Passage]
     vectors: array = field(repr=False)  # float32, 대목 순서로 dim개씩
+    bm25: Bm25 = field(repr=False)
+    embedder: Embedder | None = field(default=None, repr=False, compare=False)
 
-    def search(self, keys: Sequence[str], query_vector: Sequence[float], k: int) -> list[Hit]:
-        """keys 논문의 대목 안에서만 query_vector에 가까운 k개(RP-6)."""
+    def _positions(self, keys: Sequence[str] | None) -> list[int]:
+        if keys is None:
+            return list(range(len(self.passages)))
+        unknown = [key for key in dict.fromkeys(keys) if key not in self.keys]
+        if unknown:
+            raise PaperStoreError(f"not in the paper list: {', '.join(unknown)}")
         wanted = set(keys)
-        pos = [i for i, p in enumerate(self.passages) if p.key in wanted]
+        return [i for i, p in enumerate(self.passages) if p.key in wanted]
+
+    def _vector_rank(self, query: str, pos: list[int]) -> list[tuple[int, float]]:
+        e = self.embedder if self.embedder is not None else embedder_by_name(self.embedder_name)
+        q = e([query])[0]
+        if len(q) != self.dim:
+            raise PaperStoreError(f"embedder {e.name} returned the wrong shape")
         rows = [self.vectors[i * self.dim : (i + 1) * self.dim] for i in pos]
-        ranked = rank(query_vector, rows, k)
-        return [Hit(self.passages[pos[j]], score) for j, score in ranked]
+        return [(pos[j], s) for j, s in rank(q, rows, len(rows))]
+
+    def search(
+        self, query: str, k: int, *, keys: Sequence[str] | None = None, method: str = "hybrid"
+    ) -> list[Hit]:
+        """query에 맞는 대목 k개(RP-6).
+
+        keys가 None이면 모든 논문, 빈 목록이면 아무것도 찾지 않음, 목록에 없는 key가 있으면 PaperStoreError.
+        method: hybrid(BM25 순위와 벡터 순위를 fuse로 합침, 기본), bm25, vector.
+        """
+        if method not in METHODS:
+            raise PaperStoreError(f"unknown search method {method!r} (one of {', '.join(METHODS)})")
+        pos = self._positions(keys)
+        if not pos or k <= 0:
+            return []
+        if method == "bm25":
+            ranked = self.bm25.rank(query, pos)
+            return [Hit(self.passages[i], s, r, None) for r, (i, s) in enumerate(ranked[:k], 1)]
+        by_vector = self._vector_rank(query, pos)
+        if method == "vector":
+            return [Hit(self.passages[i], s, None, r) for r, (i, s) in enumerate(by_vector[:k], 1)]
+        by_words = self.bm25.rank(query, pos)
+        bm25_rank = {i: r for r, (i, _) in enumerate(by_words, 1)}
+        vector_rank = {i: r for r, (i, _) in enumerate(by_vector, 1)}
+        fused = fuse([[i for i, _ in by_words], [i for i, _ in by_vector]])
+        return [Hit(self.passages[i], s, bm25_rank.get(i), vector_rank.get(i)) for i, s in fused[:k]]
 
 
 def load_index(root: Path, embedder: Embedder | None) -> Index:
@@ -380,24 +509,21 @@ def load_index(root: Path, embedder: Embedder | None) -> Index:
     passages = [p for key in keys for p in read_passages(root, key)]
     if [p.id for p in passages] != meta["ids"]:
         raise IndexProblem("stale_index", "index passage ids differ from the passages files; run build")
-    return Index(meta["embedder"], meta["dim"], passages, _unpack(data))
+    bm25 = Bm25.build([p.text for p in passages])
+    return Index(meta["embedder"], meta["dim"], tuple(keys), passages, _unpack(data), bm25, embedder)
 
 
-def search(root: Path, keys: Sequence[str], query: str, k: int, embedder: Embedder) -> list[Hit]:
-    """keys 논문의 대목 안에서 query에 가까운 k개(RP-6).
+def search(
+    root: Path, keys: Sequence[str] | None, query: str, k: int, embedder: Embedder | None, method: str = "hybrid"
+) -> list[Hit]:
+    """색인을 읽어 한 번 찾습니다(RP-6). 여러 번 찾을 때는 load_index로 읽어 둔 Index.search를 씁니다.
 
-    keys가 비면 아무것도 찾지 않습니다(sources가 빈 지표). 목록에 없는 key가 있으면 PaperStoreError입니다:
-    지표 목록과 논문 목록이 어긋난 것이므로 근거 없이 넘어가지 않고 멈춥니다(check가 미리 잡을 일).
+    keys가 None이면 모든 논문에서 찾습니다. 빈 목록이면 아무것도 찾지 않습니다(sources가 빈 지표). 목록에 없는
+    key가 있으면 PaperStoreError입니다: 지표 목록과 논문 목록이 어긋난 것이므로 근거 없이 넘어가지 않고 멈춥니다.
     """
-    keys = list(dict.fromkeys(keys))
-    if not keys or k <= 0:
+    if keys is not None and not keys:
         return []
-    listed = read_papers(root)
-    unknown = [key for key in keys if key not in listed]
-    if unknown:
-        raise PaperStoreError(f"not in the paper list: {', '.join(unknown)}")
-    index = load_index(root, embedder)
-    return index.search(keys, embedder([query])[0], k)
+    return load_index(root, embedder).search(query, k, keys=keys, method=method)
 
 
 # ================================================================ 검사 (TL-10 check, M10-3)

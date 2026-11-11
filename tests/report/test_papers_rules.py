@@ -92,3 +92,55 @@ def test_rank_orders_by_score_and_breaks_ties_by_position() -> None:
     assert papers.rank(q, vectors, 0) == []
     assert len(papers.rank(q, vectors, 10)) == 4
     assert papers.rank(q, [], 3) == []
+
+
+# ---------------------------------------------------------------- 단어 맞춤(BM25)과 순위 합치기 (RP-6)
+
+
+def test_tokenize_lowercases_splits_on_non_alphanumeric_and_keeps_digits() -> None:
+    assert papers.tokenize("Stride-time CV (%) was 2.5, n_steps=40") == [
+        "stride", "time", "cv", "was", "2", "5", "n", "steps", "40",
+    ]  # fmt: skip
+    assert papers.tokenize("Gangbild Ärzte") == ["gangbild", "ärzte"]
+    assert papers.tokenize(" ,.- ") == []
+
+
+def test_bm25_scores_match_hand_arithmetic() -> None:
+    # 대목 0 "gait speed"(길이 2), 1 "gait gait falls"(길이 3), 2 "bone density"(길이 2)
+    # N = 3, avgdl = 7/3, df(gait) = 2 → idf = ln(1 + (3 - 2 + 0.5) / (2 + 0.5)) = ln(1.6)
+    # 점수 = idf · tf·(k1+1) / (tf + k1·(1 - b + b·len/avgdl)),  k1 = 1.5, b = 0.75
+    #   0: ln1.6 · 1·2.5 / (1 + 1.5·(0.25 + 0.75·2/(7/3))) = ln1.6 · 2.5 / 2.339286 = ln1.6 · 1.068702
+    #   1: ln1.6 · 2·2.5 / (2 + 1.5·(0.25 + 0.75·3/(7/3))) = ln1.6 · 5.0 / 3.821429 = ln1.6 · 1.308411
+    #   2: "gait"가 없으므로 순위에 들지 않음
+    bm = papers.Bm25.build(["gait speed", "gait gait falls", "bone density"])
+    ranked = bm.rank("Gait", [0, 1, 2])
+    assert [i for i, _ in ranked] == [1, 0]
+    assert ranked[0][1] == pytest.approx(math.log(1.6) * 5.0 / (2 + 1.5 * (0.25 + 0.75 * 3 / (7 / 3))))
+    assert ranked[1][1] == pytest.approx(math.log(1.6) * 2.5 / (1 + 1.5 * (0.25 + 0.75 * 2 / (7 / 3))))
+    assert ranked[0][1] == pytest.approx(math.log(1.6) * 1.308411, rel=1e-6)
+
+
+def test_bm25_rank_only_inside_given_positions_and_ties_by_position() -> None:
+    bm = papers.Bm25.build(["gait speed", "gait gait falls", "gait speed", "bone density"])
+    # 0과 2는 글이 같아 점수가 같음 → 앞의 것이 먼저
+    assert [i for i, _ in bm.rank("gait speed", [3, 2, 0])] == [0, 2]
+    assert bm.rank("unknownword", [0, 1, 2, 3]) == []
+    assert bm.rank("", [0, 1]) == []
+    # 질문에 같은 낱말이 두 번 있어도 한 번으로 셈
+    assert bm.rank("gait gait", [0, 1]) == bm.rank("gait", [0, 1])
+
+
+def test_fuse_sums_reciprocal_ranks() -> None:
+    # 2: 1/61 + 1/62,  1: 1/63 + 1/61,  0: 1/62 (둘째 순위에 없으므로 그쪽 몫은 없음)
+    fused = papers.fuse([[2, 0, 1], [1, 2]])
+    assert [i for i, _ in fused] == [2, 1, 0]
+    assert fused[0][1] == pytest.approx(1 / 61 + 1 / 62)
+    assert fused[1][1] == pytest.approx(1 / 63 + 1 / 61)
+    assert fused[2][1] == pytest.approx(1 / 62)
+
+
+def test_fuse_breaks_ties_by_position_and_handles_empty() -> None:
+    assert [i for i, _ in papers.fuse([[1], [0]])] == [0, 1]
+    assert [i for i, _ in papers.fuse([[5, 3], [3, 5]])] == [3, 5]
+    assert papers.fuse([[], []]) == []
+    assert [i for i, _ in papers.fuse([[], [4, 2]])] == [4, 2]

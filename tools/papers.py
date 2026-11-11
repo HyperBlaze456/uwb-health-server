@@ -4,7 +4,7 @@
         [--doi D] [--use "..."] --text FILE.txt [--source FILE.pdf] [--replace]
     uv run python tools/papers.py build [--embedder NAME]
     uv run python tools/papers.py check [--catalog contracts/metrics.toml]
-    uv run python tools/papers.py search --keys a2017,b2020 --query "..." [-k 3]
+    uv run python tools/papers.py search --query "..." [--keys a2017,b2020] [--method hybrid|bm25|vector] [-k 3]
 
 add:    논문 하나를 목록에 넣고, 원문(--source)을 source/<key>.<확장자>로 복사하고, 평문(--text)을 대목으로 나눕니다.
         PDF에서 글을 뽑는 일은 이 도구가 하지 않습니다. 사람이 평문 파일(UTF-8)을 따로 만들어 --text로 줍니다
@@ -14,7 +14,9 @@ build:  모든 대목으로 색인을 다시 만듭니다. 대목을 바꾼 뒤(
         글자 n-gram 해시 대역(뜻을 아는 모델이 아님)뿐입니다.
 check:  지표 목록의 모든 sources key가 논문 목록에 있는지, 논문마다 대목과 원문 파일이 있는지,
         색인이 있고 지금 대목과 맞는지 봅니다.
-search: 고른 논문의 대목 안에서만 질문에 가까운 대목을 보입니다(색인을 만든 벡터 함수로 찾음).
+search: 질문에 맞는 대목을 보입니다. --keys를 주면 그 논문 안에서만, 주지 않으면 모든 논문에서 찾습니다.
+        --method: hybrid(기본, 단어 맞춤 BM25 순위와 벡터 순위를 순위 역수의 합으로 섞음), bm25, vector.
+        벡터는 색인을 만든 벡터 함수로 셉니다. 줄마다 점수, 대목 id, 쪽, 두 순위(없으면 -)를 보입니다.
 
 저장소 뿌리는 --root, 없으면 DATA_ROOT/papers(기본 /data/papers)입니다.
 종료 코드: 0 = 정상, 1 = check에서 문제가 있음, 2 = 인자 오류나 저장소를 쓸 수 없음.
@@ -65,12 +67,16 @@ def cmd_check(root: Path, a: argparse.Namespace) -> int:
 
 
 def cmd_search(root: Path, a: argparse.Namespace) -> int:
-    keys = [k.strip() for k in a.keys.split(",") if k.strip()]
-    e = papers.embedder_by_name(papers.load_index(root, None).embedder_name)
-    hits = papers.search(root, keys, a.query, a.k, e)
+    keys = None if a.keys is None else [k.strip() for k in a.keys.split(",") if k.strip()]
+    hits = papers.search(root, keys, a.query, a.k, None, a.method)
+
+    def show(r: int | None) -> str:
+        return "-" if r is None else str(r)
+
     for h in hits:
         page = "-" if h.passage.page is None else h.passage.page
-        print(f"{h.score:.3f}  {h.passage.id}  page {page}\n    {h.passage.text}")
+        print(f"{h.score:.4f}  {h.passage.id}  page {page}  bm25 {show(h.bm25_rank)}  vector {show(h.vector_rank)}"
+              f"\n    {h.passage.text}")  # fmt: skip
     if not hits:
         print("no passages")
     return 0
@@ -101,8 +107,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--catalog", default=str(DEFAULT_CATALOG))
     s.set_defaults(func=cmd_check)
 
-    s = sub.add_parser("search", help="find passages inside the given papers only")
-    s.add_argument("--keys", required=True, help="comma separated paper keys")
+    s = sub.add_parser("search", help="find passages in all papers, or only in the given ones")
+    s.add_argument("--keys", help="comma separated paper keys (default: all papers)")
+    s.add_argument("--method", default="hybrid", help="hybrid (default), bm25 or vector")
     s.add_argument("--query", required=True)
     s.add_argument("-k", type=int, default=3)
     s.set_defaults(func=cmd_search)

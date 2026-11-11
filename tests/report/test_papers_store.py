@@ -231,3 +231,100 @@ def test_check_reports_missing_and_stale_index(store: Path, inputs: Path, tmp_pa
 
 def test_check_missing_catalog_is_argument_error(store: Path, tmp_path: Path) -> None:
     assert tool.main(["--root", str(store), "check", "--catalog", str(tmp_path / "none.toml")]) == 2
+
+
+# ---------------------------------------------------------------- RP-6 모든 논문에서, 두 방식을 섞어 찾기
+
+
+class OnlyMeasuredFar:
+    """시험용 벡터 함수: 'measured'가 든 글만 [0, 1], 나머지는 [1, 0]. 질문은 [1, 0]이 되어 그 대목을 맨 뒤로 보냄."""
+
+    name = "fake-measured-v1"
+    dim = 2
+
+    def __call__(self, texts: list[str]) -> list[list[float]]:
+        return [[0.0, 1.0] if "measured" in t else [1.0, 0.0] for t in texts]
+
+
+def test_search_without_keys_looks_in_all_papers(store: Path) -> None:
+    index = papers.load_index(store, papers.NgramEmbedder())
+    hits = index.search("bone density fracture", 8)
+    assert len(hits) == 8  # 세 논문의 대목 모두
+    assert {h.passage.key for h in hits} == {"studenski2011", "hausdorff2001", "smith2010"}
+    assert hits[0].passage.key == "smith2010"
+    assert papers.search(store, None, "bone density fracture", 8, papers.NgramEmbedder()) == hits
+
+
+def test_search_none_empty_and_unknown_keys(store: Path) -> None:
+    index = papers.load_index(store, papers.NgramEmbedder())
+    assert index.search("gait speed", 3, keys=[]) == []
+    assert {h.passage.key for h in index.search("gait speed", 8, keys=["smith2010"])} == {"smith2010"}
+    with pytest.raises(papers.PaperStoreError, match="nobody2000"):
+        index.search("gait speed", 3, keys=["smith2010", "nobody2000"])
+    with pytest.raises(papers.PaperStoreError, match="method"):
+        index.search("gait speed", 3, method="magic")
+
+
+def test_hybrid_returns_passage_only_word_match_finds(store: Path) -> None:
+    e = OnlyMeasuredFar()
+    papers.build_index(store, e)
+    index = papers.load_index(store, e)
+    target = "hausdorff2001#3"  # "Variability is measured as the coefficient of variation."
+    q = "coefficient variation"
+    # 벡터만: 그 대목이 8개 중 맨 뒤
+    vec = index.search(q, 8, method="vector")
+    assert vec[-1].passage.id == target and vec[-1].vector_rank == 8
+    assert target not in [h.passage.id for h in index.search(q, 1, method="vector")]
+    # 단어만: "coefficient", "variation"은 그 대목에만 있음 → 하나만 나옴
+    bm = index.search(q, 5, method="bm25")
+    assert [h.passage.id for h in bm] == [target]
+    assert (bm[0].bm25_rank, bm[0].vector_rank) == (1, None)
+    # 섞으면: 1/61 + 1/68 > 다른 대목의 최대 1/61 + 0
+    top = index.search(q, 1)[0]
+    assert top.passage.id == target
+    assert (top.bm25_rank, top.vector_rank) == (1, 8)
+    assert top.score == pytest.approx(1 / 61 + 1 / 68)
+    second = index.search(q, 2)[1]
+    assert second.bm25_rank is None and second.vector_rank == 1
+    assert second.score == pytest.approx(1 / 61)
+
+
+def test_search_is_deterministic_across_loads(store: Path) -> None:
+    e = papers.NgramEmbedder()
+    for method in papers.METHODS:
+        runs = [
+            [(h.passage.id, h.score, h.bm25_rank, h.vector_rank)
+             for h in papers.load_index(store, e).search("falls gait speed", 8, method=method)]  # fmt: skip
+            for _ in range(2)
+        ]
+        assert runs[0] == runs[1]
+        assert runs[0]
+
+
+def test_loaded_index_searches_repeatedly_without_reading_files(store: Path) -> None:
+    index = papers.load_index(store, papers.NgramEmbedder())
+    first = index.search("stride time variability", 4)
+    shutil.rmtree(store / "passages")
+    shutil.rmtree(store / "index")
+    assert index.search("stride time variability", 4) == first
+    assert index.search("bone density", 2, method="bm25")[0].passage.key == "smith2010"
+
+
+def test_bm25_search_refuses_stale_index(store: Path, inputs: Path) -> None:
+    assert add(store, inputs, "smith2010", "gait", "--replace") == 0
+    with pytest.raises(papers.IndexProblem, match="stale"):
+        papers.search(store, None, "gait", 3, papers.NgramEmbedder(), method="bm25")
+
+
+def test_index_loaded_without_embedder_uses_the_one_it_was_built_with(store: Path) -> None:
+    e = papers.NgramEmbedder()
+    assert papers.load_index(store, None).search("falls", 3) == papers.load_index(store, e).search("falls", 3)
+
+
+def test_search_tool_without_keys_and_with_method(store: Path, capsys) -> None:
+    rc = tool.main(["--root", str(store), "search", "--query", "bone density", "-k", "2", "--method", "bm25"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert out.count("smith2010#") == 2
+    assert "bm25 1" in out and "vector -" in out
+    assert tool.main(["--root", str(store), "search", "--query", "gait", "--method", "magic"]) == 2
