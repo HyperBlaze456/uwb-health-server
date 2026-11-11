@@ -43,6 +43,10 @@ class Settings:
     app_token_ttl_days: int = 30
     core_version: str = "dev"
     alert_webhook_url: str | None = None  # OP-2. 없으면 로그만
+    # RP-8 글 쓰는 모델(report/writer.py). API 키는 SDK가 환경 변수 ANTHROPIC_API_KEY에서 읽음
+    report_model: str = "claude-opus-5-5"
+    report_effort: str = "high"  # output_config.effort: low · medium · high · xhigh · max
+    report_max_searches: int = 12  # RP-6: 질문 하나에서 search_papers를 부를 수 있는 횟수
 
     def db_user(self, role: Role) -> str:
         return self.db_owner if role == "owner" else _ROLE_USER[role]
@@ -99,6 +103,9 @@ class Settings:
             app_token_ttl_days=int(get("APP_TOKEN_TTL_DAYS", d.app_token_ttl_days)),
             core_version=get("CORE_VERSION", d.core_version),
             alert_webhook_url=get("ALERT_WEBHOOK_URL", None) or None,
+            report_model=get("REPORT_MODEL", d.report_model),
+            report_effort=get("REPORT_EFFORT", d.report_effort),
+            report_max_searches=int(get("REPORT_MAX_SEARCHES", d.report_max_searches)),
         )
 
 

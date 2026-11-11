@@ -85,6 +85,7 @@ docker compose exec core python tools/verify_archive.py
 | `bench.py` | 장치 N대로 초당 1요청씩 보내고 intake 로그에서 p95를 셈 | 없음(`--register`는 `api_rw`) | TL-8 |
 | `unpack_features.py --all \| --since ISO` | 결과 원문이 있는 지난 run마다 `feature` 작업을 넣음(지난 run 채우기, 새 표를 더한 뒤 다시 풀기) | `core_rw` | TL-9 |
 | `resummarize.py --since 날짜 [--device]` | 그 한국 날짜부터 오늘까지 착용 기록이 있는 장치마다 `summary` 작업을 넣음(지표 목록의 `period` 지표나 `names`를 고친 뒤 일별 값 다시 계산) | `core_rw` | TL-11 |
+| `ask.py --subject ID --from ISO --to ISO [--show-context \| --report \| --question 글] [--fake] [--trace-out]` | 착용자·기간의 지표 값을 맥락으로 모델과 묻고 답함(대화 코어). 모델이 논문 저장소를 스스로 찾아 인용. `--show-context`는 키 없이 맥락만, `--fake`는 키 없이 가짜 모델로 전 과정 | `api_rw`(읽기만) | TL-12 |
 
 ## 데이터는 어디에
 

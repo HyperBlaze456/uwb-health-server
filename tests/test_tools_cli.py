@@ -25,6 +25,7 @@ TOOLS = [
     "papers",
     "unpack_features",
     "resummarize",
+    "ask",
 ]
 
 

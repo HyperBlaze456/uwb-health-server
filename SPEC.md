@@ -106,7 +106,7 @@ core: intake.chunk ──▶ segment ──▶ analysis(gaitfusion C2) ──▶
 
 ### 3.1 기술
 
-Python 3.14, FastAPI + uvicorn, psycopg 3, httpx, pytest, import-linter, argon2-cffi, PostgreSQL 17, Caddy 2, Docker Compose. 버전은 구현을 시작할 때 `pyproject.toml`과 `compose.yaml`에 고정합니다.
+Python 3.14, FastAPI + uvicorn, psycopg 3, httpx, pytest, import-linter, argon2-cffi, PostgreSQL 17, Caddy 2, Docker Compose. 2단계의 글 쓰기는 anthropic SDK(`report/writer.py`에서만 import). 버전은 구현을 시작할 때 `pyproject.toml`과 `compose.yaml`에 고정합니다.
 
 Python 버전, 의존성, 가상 환경, 실행은 모두 uv 하나로 관리합니다. 버전은 `.python-version`, 의존성은 `pyproject.toml`(정확한 버전)과 `uv.lock`에 둡니다. 명령은 `uv sync`, `uv run pytest`, `uv run python tools/<도구>.py`처럼 씁니다. Docker 이미지도 `uv sync --frozen`으로 같은 잠금 파일에서 설치합니다.
 
@@ -130,13 +130,13 @@ uwb-health-server/
     archive/    rules.py store.py run.py
     feature/    rules.py store.py run.py routes.py            (2단계)
     summary/    store.py run.py routes.py                     (2단계)
-    report/     papers.py                                     (2단계, 글 쓰기는 아직)
+    report/     papers.py rules.py store.py writer.py chat.py (2단계. 작업·저장·앱 API는 아직)
     process/    intake.py core.py api.py
   tests/        pipeline/ registry/ intake/ segment/ analysis/ archive/
                 contract/wire_vectors/  contract/gaitfusion/  e2e/(data/)  test_ownership.py
   tools/        fake_head.py fake_gaitfusion.py reindex_raw.py verify_archive.py
                 reingest_rejected.py admin.py import_usb.py bench.py
-                unpack_features.py resummarize.py papers.py            (2단계: TL-9, TL-11, TL-10)
+                unpack_features.py resummarize.py papers.py ask.py     (2단계: TL-9, TL-11, TL-10, TL-12)
   ops/          backup.sh crontab restore.md
 ```
 
@@ -181,7 +181,7 @@ layers =
 name = rules.py는 바깥을 모름
 type = forbidden
 source_modules = uwbserver.*.rules
-forbidden_modules = psycopg httpx fastapi uwbserver.pipeline.db uwbserver.pipeline.files uwbserver.pipeline.jobs
+forbidden_modules = psycopg httpx fastapi anthropic uwbserver.pipeline.db uwbserver.pipeline.files uwbserver.pipeline.jobs
 ```
 
 `rules.py`가 `pipeline.wire`(순수 해독기)는 쓸 수 있습니다.
@@ -1498,7 +1498,10 @@ min_n = 3
   - **인용.** 문헌에 기대는 문장에는 인용 자리 표시(`[p2]`)를 붙입니다. 이 대화에서 `search_papers`가 실제로 돌려준 대목만 인용할 수 있습니다. 찾지 못했으면 찾지 못했다고 쓰고, 기억으로 채우지 않습니다.
   - **추론의 말씨.** 여러 지표가 함께 보이는 양상과 관련된 증상을 추론해 적되, "문헌에서 이런 양상은 ○○와 함께 보고되었다"까지만 씁니다. 의심·가능성·진단·치료 권고의 말은 쓰지 않습니다.
   - **한계.** 한계는 글의 중심으로 다루지 않습니다. 센서 위치와 자료 부족에 대한 정해진 짧은 문구를 서버가 글 끝에 한 번 붙이고, 자료가 부족한 값(`sufficient = false`)은 표에 표시합니다.
-  - **서버의 검사.** 모든 자리 표시가 맥락과 이 대화의 찾은 기록에 있는 번호를 가리킴. 자리 표시 밖에 숫자로 적은 측정값이 없음. 보고서는 정해진 부분을 모두 갖춤. 어기면 한 번 다시 쓰게 하고, 또 어기면 실패로 둡니다.
+  - **서버의 검사.** 모든 자리 표시가 맥락과 이 대화의 찾은 기록에 있는 번호를 가리킴. 자리 표시 밖에 숫자로 적은 측정값이 없음. 보고서는 정해진 부분을 모두 갖추고, 요약은 `show = "basic"`인 값만 씀. 어기면 한 번 다시 쓰게 하고, 또 어기면 실패로 둡니다.
+  - **"숫자로 적은 측정값"의 기준.** 단위(지표 목록의 단위, `%`, 우리말 단위 낱말)가 바로 붙은 숫자입니다. 맥락에 있는 조건의 숫자(예 "30초 이상")와, 인용 `[pN]`이 붙은 문장의 숫자(문헌이 보고한 값)는 뺍니다. 그래서 단위 없이 적은 값, 글자로 적은 수, 인용이 붙은 문장 속에 섞인 측정값은 잡지 못합니다. 이 검사는 실수를 줄이는 장치이고, 수치의 정확함은 자리 표시가 맡습니다.
+  - **값을 넣는 꼴.** 유효 숫자 3자리(1000 이상은 정수), 비율은 %, 횟수는 정수, 초는 60초·1시간을 넘으면 분·시간으로 적습니다.
+  - **모델이 쓰는 꼴.** 보고서 요청에는 정해진 제목 넷(`## 요약`, `## 활동량`, `## 속도와 보폭`, `## 종합 풀이`)으로 쓰게 하고 서버가 제목으로 나눕니다. 응답 한 번의 길이 한도는 16,000 토큰입니다(넘으면 그 질문은 실패).
   - **보고서의 부분.**
 
 | 순서 | 부분 | 내용 | 누가 |
@@ -1513,7 +1516,9 @@ min_n = 3
 | 8 | 한계와 근거 문헌 | 정해진 짧은 한계 문구, 인용한 논문 목록 | 서버 |
 
   - **누구에게 보이나.** 착용자 보기(`view=basic`)는 1–3번, 의료진·연구자 보기는 전부입니다. 단, 지금의 디버그 단계에서는 종합 풀이(증상 추론)도 모두에게 보입니다(설정 `REPORT_INFERENCE_FOR_ALL`, 지금 기본 `true`). 실제 대상자로 넘어갈 때 끕니다(13.1절).
-  - 호출 실패와 시간 초과는 재시도하고, 모델이 답을 거절하면(`refusal`) 실패로 두고 이유를 남깁니다.
+  - 호출 실패와 시간 초과는 재시도하고, 모델이 답을 거절하면(`refusal`) 실패로 두고 이유를 남깁니다. 안전 분류기의 거절은 서버 쪽 대체 모델로 한 번 넘깁니다(API의 `fallbacks`).
+  - 질문 하나에 찾기는 `REPORT_MAX_SEARCHES`번(기본 12)까지입니다. 넘으면 도구가 오류를 돌려주어 모델이 그만 찾고 쓰게 합니다.
+  - **명령줄 입구(TL-12).** `tools/ask.py --subject ID --from 시각 --to 시각`에 `--show-context`(맥락만 출력, 키가 없어도 됨), `--report`, `--question "…"`, 또는 아무것도 주지 않으면 대화(`/report`, `/quit`). `--trace-out 파일`은 기록을 저장하고, `--fake`는 키 없이 전 과정을 도는 정해진 대역 모델을 씁니다(진짜 저장소에서 한 번 찾고, 가짜임을 글에 밝힘). 설정: `REPORT_MODEL`(기본 `claude-opus-5-5`), `REPORT_EFFORT`(기본 `high`), `REPORT_MAX_SEARCHES`. API 키는 SDK가 환경의 `ANTHROPIC_API_KEY`에서 읽습니다.
 - **RP-9 저장.** 호출 전에 보고서 id를 받고(AN-6과 같음), 맥락(`/data/report/<id>/input.json.gz`), 글(`/data/report/<id>/report.md`), 기록(`/data/report/<id>/trace.json.gz`: 주고받은 말과 찾은 기록)을 임시 이름 → fsync → 이름 바꾸기로 쓴 뒤, 한 트랜잭션에서 `report.report`, `report.report_run`, `report.citation` 행을 넣고 작업을 `done`으로 바꿉니다. 같은 기간을 다시 만들면 새 보고서이고 옛 것은 남습니다. 보고서 파일은 백업합니다(글 쓰는 모델의 답은 같은 입력에서도 달라질 수 있어 다시 만들 수 없음). 아직 만들지 않았습니다(RP-0).
 
 ### 14.8 앱 API에 더하는 것 (C3)
@@ -1718,7 +1723,7 @@ tests/          contract/metrics/  feature/  summary/  report/
 2. 지표 하나로 찾은 대목이 모두 그 지표의 `sources` 논문에서 옴. `sources`가 빈 지표는 대목 없음.
 3. `papers.py check`: 지표 목록의 모든 `sources` key가 논문 목록에 있고 원문 파일이 있음.
 
-**M11 보고서 (RP-1, RP-4, RP-7–RP-9)**
+**M11 보고서 (RP-1, RP-4, RP-7–RP-9)** — 2026-11-11 대화 코어, 맥락, 검사, 보고서 조립, 명령줄 입구를 가짜 모델 시험으로 만듦. 진짜 모델 호출은 한 번도 보내지 않았음(키 없음). 작업·저장·앱 API(아래 1·3·5번의 저장과 API 부분)는 아직.
 1. 가짜 글 쓰기(`fake_writer.py`, 정해진 글을 돌려줌) → 보고서 `done`, 입력 파일(sha256이 행과 같음), 글 파일, run·인용 행. 글의 자리 표시가 값과 단위로 바뀜. `view=basic` 조회는 요약 부분과 `basic` 값만 줌.
 2. RP-8의 검사를 어기는 글마다 → 한 번 다시 시도, 또 어기면 `failed`, 행과 파일 없음.
 3. 걷기가 없는 기간 → `skipped`(`no_walking`). 풀리지 않은 run이 있으면 미뤄짐.

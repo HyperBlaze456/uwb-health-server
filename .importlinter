@@ -21,6 +21,7 @@ forbidden_modules =
     psycopg
     httpx
     fastapi
+    anthropic
     uwbserver.pipeline.db
     uwbserver.pipeline.files
     uwbserver.pipeline.jobs
