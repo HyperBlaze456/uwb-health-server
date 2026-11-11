@@ -5,16 +5,17 @@
 ## 0. 읽는 법
 
 - **필수와 선택**: "합니다", "해야 합니다", "하지 않습니다"는 필수입니다. "할 수 있습니다"는 선택입니다.
-- **요구사항 번호**: `IN-3`처럼 영역 머리글자와 번호를 붙였습니다. 시험(11절)과 코드 주석에서 이 번호로 가리킵니다. PL 공용, RG 사람 입력, IN 받기, SG 구간, AN 분석 호출, AR 원본 보관, AP 앱 API, TL 도구, OP 운영입니다.
-- **범위**: 이 문서의 1–13절이 **1단계**이고 지금 만듭니다. 14절은 **2단계 초안**이고 만들지 않습니다(1.2절).
-- **다른 문서**: 이 서버는 세 문서와 계약을 맺습니다. 문서가 서로 다르면 계약 문서가 이깁니다.
+- **요구사항 번호**: `IN-3`처럼 영역 머리글자와 번호를 붙였습니다. 시험(11절)과 코드 주석에서 이 번호로 가리킵니다. PL 공용, RG 사람 입력, IN 받기, SG 구간, AN 분석 호출, AR 원본 보관, AP 앱 API, TL 도구, OP 운영입니다. 2단계는 MC 지표 규약, FT 특징 풀기, SM 일별 값, RP 보고서입니다.
+- **범위**: 이 문서의 1–13절이 **1단계**이고 지금 만듭니다. 14절은 **2단계 계획**입니다(1.2절). 1단계 다음에 M7부터 차례로 만듭니다(14.10절).
+- **다른 문서**: 이 서버는 다음 문서와 계약을 맺습니다. 문서가 서로 다르면 계약 문서가 이깁니다.
 
 | 문서 | 무엇 | 소유 |
 |---|---|---|
 | [wire.md](../uwb-firmware/docs/wire.md) | C1: Head → 서버 바이트 형식, 응답, 검사 규칙, 시험 벡터 | 펌웨어 저장소 |
 | 이 문서 7절 | C2: 서버 → gaitfusion 요청·응답 | 이 저장소 |
 | 이 문서 8절 | C3: 앱 → 서버 REST API | 이 저장소 |
-| [gait-features.md](../gaitfusion/gait-features.md) | C2 응답 안의 분석 특징 필드(2단계) | gaitfusion 저장소 |
+| 이 문서 14.4절과 `contracts/metrics.toml` | C4: 지표 규약. C2 응답 안의 분석 특징 필드와 서버가 계산하는 지표의 이름·단위·뜻(2단계) | 이 저장소 |
+| [gait-features.md](../gaitfusion/gait-features.md) | 지표를 고른 근거 문헌과 이유. 이름·단위·뜻이 C4와 다르면 C4가 이김 | gaitfusion 저장소 |
 
 ## 1. 목표와 범위
 
@@ -27,7 +28,8 @@
 | 단계 | 내용 | 이 문서 |
 |---|---|---|
 | **1단계: 원본 정돈** | 받기, 장치·착용자 등록, 구간 만들기, gaitfusion 호출과 응답 보관(걷기 구간의 시간 범위, 궤적, 응답 원문), 걷기 원본 영구 보관, 30일 지난 원본 삭제, 이것들을 보고 고치는 API | 1–13절. 지금 만듦 |
-| **2단계: 분석 특징** | 응답의 보폭·걸음·회전·창·삽화를 표로 풀기, 일별 요약, 선별 지수, 앱의 요약 조회 | 14절 초안. gaitfusion의 특징이 정해지면 별도 스펙으로 확정 |
+| **2단계: 지표 규약, 특징 풀기, 일별 값, 보고서** | 분석 결과를 주고받는 규약(C4), 응답의 보폭·걸음·회전·창·삽화를 줄 단위로 저장, 일별 지표 값과 추세 조회, 고른 기간의 보고서(지표 값 + 논문 근거 + 글)와 그 조회 | 14절 계획. gaitfusion이 낼 특징이 다 정해지기를 기다리지 않고, 형식이 바뀌어도 받아들임 |
+| 3단계 | 질환별 선별 지수 | 14.1절. 자체 검증 데이터가 생긴 뒤 |
 
 경계는 이렇습니다. 1단계 서버는 gaitfusion 응답 중 **걷기 구간이 언제였는지, 어느 발이었는지, 궤적 파일**만 해석합니다. 나머지 필드는 해석하지 않고 응답 원문 파일로 남깁니다. 그래서 2단계는 gaitfusion을 다시 돌리지 않고도 남긴 원문에서 표를 채울 수 있습니다.
 
@@ -43,7 +45,7 @@
 
 ### 1.4 하지 않는 것
 
-- 보폭·일별 요약·지수 계산(2단계).
+- 보폭 줄 저장, 일별 값, 보고서(2단계, 14절). 선별 지수 계산(3단계).
 - Head 펌웨어의 전송부(펌웨어 저장소의 일). 1단계는 가짜 Head(TL-1)로 검사합니다.
 - gaitfusion 서비스 구현(gaitfusion 저장소의 일). 1단계는 가짜 gaitfusion(TL-2)으로 검사하고, 진짜 서비스로는 C2 계약 시험(M3-7)과 진짜 서비스 전 구간 시험(M3-9)을 돌립니다.
 - 원격 VM 배포와 proxy 인증서(12절 마지막 순서).
@@ -474,7 +476,7 @@ volumes: {certs: {}, pgdata: {}}
 
 ## 7. 계약 C2: 서버 → gaitfusion
 
-이 저장소가 소유하고, gaitfusion 저장소가 구현합니다. 바꿀 때는 이 절을 먼저 고치고 `c2_version`을 올립니다. 응답 `bouts[]` 안의 분석 특징 필드(보폭, 창 등)의 뜻은 [gait-features.md](../gaitfusion/gait-features.md)가 정하고, 1단계 서버는 그 필드를 해석하지 않습니다.
+이 저장소가 소유하고, gaitfusion 저장소가 구현합니다. 바꿀 때는 이 절을 먼저 고치고 `c2_version`을 올립니다. 응답 `bouts[]` 안의 분석 특징 필드(보폭, 창 등)의 이름·단위·뜻은 C4 지표 규약(14.4절)이 정하고, 1단계 서버는 그 필드를 해석하지 않습니다.
 
 ### 7.1 요청: `POST /v1/analyze` (`multipart/form-data`)
 
@@ -540,7 +542,7 @@ volumes: {certs: {}, pgdata: {}}
 | 궤적 파트 | 7.3절 검사를 통과. 머리의 `side`가 이름과 같음. `0 ≤ t0_s`, `t0_s + (n − 1) / rate_hz ≤ t_last`. 모든 궤적 파트는 정확히 하나의 `trajectories` 항목이 가리키고, 모든 항목의 파트가 응답에 있음 |
 | 파트 | 이름이 `result`이거나 위 규칙의 궤적 이름. 같은 이름이 둘이면 안 됨 |
 
-나머지 필드(`strides`, `turns`, `steps`, `windows`, `events`와 앞으로 더해질 것)는 있어도 없어도 되고, 1단계는 결과 원문 파일에만 남깁니다. 2단계에서 표로 풉니다(14절).
+나머지 필드(`strides`, `turns`, `steps`, `windows`, `events`와 앞으로 더해질 것)는 있어도 없어도 되고, 1단계는 결과 원문 파일에만 남깁니다. 2단계에서 줄 단위로 저장하고 지표 규약으로 풀이합니다(14.4–14.5절).
 
 ### 7.3 궤적 파트 TRJ1 (little-endian, 채널별 배열)
 
@@ -1234,251 +1236,473 @@ intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이
 - **30일 뒤**: 걷기로 판정되지 않은 시간의 원본은 사라집니다(5.3절).
 - **IMU와 앵커의 묶음 사이 검사**: 받을 때는 보지 않습니다(IN-8). IMU 프레임의 `tag_mac`이 세트 목록에 없는 경우 등은 지금 경고 로그도 없습니다. 2단계 전에 segment에 넣을지 정합니다.
 
-## 14. 2단계 초안: 분석 특징 (만들지 않음)
+## 14. 2단계 계획: 지표 규약, 특징 풀기, 일별 값, 보고서
 
-gaitfusion의 특징 목록([gait-features.md](../gaitfusion/gait-features.md))이 정해지면 이 절을 별도 스펙으로 확정합니다. 1단계와의 약속은 셋입니다.
-- 2단계는 1단계 표를 바꾸지 않고 **표를 더합니다**(새 마이그레이션 009부터. 008은 1단계의 `result_status`).
-- 특징 표는 결과 원문 파일(AN-10)에서 채울 수 있어야 합니다. 그래서 2단계를 켜는 날 gaitfusion을 다시 돌리지 않고 지난 run을 채울 수 있습니다(같은 `c2_version`일 때).
-- 2단계 표도 "결과는 추가만", "선택적인 것은 행으로"를 따릅니다.
+2026-11-11에 정했습니다. 예전 초안은 보폭 표·일별 요약·선별 지수를 "gaitfusion의 특징이 다 정해진 뒤"로 미뤘습니다. 이것을 바꿉니다. 서버는 gaitfusion이 무엇을 얼마나 잘 계산하는지가 아니라 **결과를 어떤 형식으로 내는지**에만 기댑니다. 그래서 형식(지표 규약)을 먼저 정하고, 그 위에서 특징 풀기, 일별 값(추세), 보고서를 만듭니다. gaitfusion의 출력이 바뀌어도(필드가 늘거나, 빠지거나, 이름이 바뀌어도) 서버는 코드와 표를 고치지 않고 받아들입니다(MC-4).
 
-### 14.1 목표
+1단계와의 약속은 그대로입니다.
+- 2단계는 1단계 표를 바꾸지 않고 **표를 더합니다**(마이그레이션 009부터). 예외는 `pipeline.job`에 작업 종류와 대상 열을 더하는 것뿐입니다.
+- 특징은 결과 원문 파일(AN-10)에서 채웁니다. 그래서 2단계를 켜는 날 gaitfusion을 다시 돌리지 않고 지난 run을 채울 수 있습니다.
+- 100 Hz 신호(원본 묶음, 궤적)는 2단계에서도 DB에 넣지 않습니다. DB에 들어가는 가장 잘게 나뉜 것은 보폭 한 줄입니다.
+- 1단계가 푸는 필드(걷기 구간의 시각·발·모드, 궤적)는 지금처럼 C2(7.2절)가 엄격히 검사합니다. 원본 보관 범위가 여기에 달려 있기 때문입니다. 아래의 "넓게 받기"는 그 밖의 분석 필드에만 적용합니다.
+
+### 14.1 범위
+
+| 부분 | 내용 | 번호 |
+|---|---|---|
+| **2A 지표 규약 (C4)** | 모든 부품이 분석 결과를 같은 뜻으로 읽게 하는 약속: 지표 목록 파일, 공통 규칙, 표 형식의 이름과 판, 형식이 바뀔 때의 규칙 | MC |
+| **2B 특징 풀기** (`feature` 단계) | run이 끝날 때마다 결과 원문의 보폭·걸음·회전·창·삽화를 줄 단위로 `feature.record`에 넣음. 값은 낸 그대로 둠 | FT |
+| **2C 일별 값** (`summary` 단계) | 착용자의 날마다 지표 값을 계산해 `summary.daily_value`에 둠. 앱의 추세 조회가 이것을 읽음 | SM |
+| **2D 보고서** (`report` 단계) | 착용자와 기간을 받아, 그 기간의 지표 값을 계산하고 의학 논문 대목을 찾아 근거로 붙여 글을 쓰고 저장. 앱 API로 냄 | RP |
+| 미룸 (3단계) | 질환별 선별 지수, gaitfusion의 모델 결과(`models[]`) 풀기 | — |
+
+미룬 것은 자체 검증 데이터(진단, 임상 척도, 낙상 기록)가 있어야 뜻이 생기는 것들입니다.
+
+### 14.2 목표와 성공 기준
 
 | # | 목표 | 성공 기준 |
 |---|---|---|
-| G4 | 보행을 보폭 단위로 재구성 | 구간이 닫힌 뒤 30분 안에 보폭·회전·10초 창·삽화 표가 DB에 있음 |
-| G5 | 신경학적 보행 이상(파킨슨, 뇌졸중 등)의 선별 지수와 개인 기준선 대비 변화 | 일별 요약에서 7일 중앙값과 30일 기준선 차이를 계산할 수 있음. 진단이 아님 |
-| G6 | 앱에 일·주 단위로 | 앱이 요청 하나로 착용자의 일별 요약 90일을 받음 |
+| G4 | **분석 결과를 한 규약으로 주고받고, 형식이 바뀌어도 받아들인다** | 풀이에 쓰는 모든 값이 지표 목록에 있음. gaitfusion이 필드를 더하거나 빼거나 이름을 바꿔도 서버의 코드와 표는 그대로이고, 필요한 일은 지표 목록 파일을 고치는 것뿐. 목록에 없는 필드나 범위 밖의 값은 run마다 숫자로 보임 |
+| G5 | **특징을 줄 단위로 저장한다** | run이 끝난 뒤 5분 안에 `feature.record` 행이 있음. 지난 run을 결과 원문에서 다시 풀면 같은 행이 나옴 |
+| G6 | **추세를 낸다** | run이 끝난 뒤 10분 안에 그날의 지표 값이 고쳐짐. 앱이 요청 하나로 착용자의 지표 몇 개의 일별 값 1년치를 받음 |
+| G7 | **기간 보고서를 낸다** | 착용자와 기간을 주면 10분 안에 보고서가 저장됨. 글 안의 모든 수치는 저장된 지표 값에서 왔고, 뜻을 풀이한 모든 문단은 저장소에 있는 논문 대목을 가리킴. 보고서의 입력이 함께 저장되어 같은 입력으로 다시 쓸 수 있음. 진단이 아님 |
 
-### 14.2 더할 것
+### 14.3 흐름
 
-- **응답 필드**: `bouts[].strides`·`turns`·`steps`(양발일 때)·`windows`·`events`, `summary.method_versions`. 뜻은 gait-features.md 3–8절. 걸음 항목은 `{"idx", "side", "start_s", "end_s", "step_time_s", "step_length_m", "step_width_m", "double_support_s", "single_support_s", "uwb_support"}`. 한 발이면 `steps`는 빈 배열이고, `events[].side`는 한 발 신호로 판정했으면 그 발, 양발을 함께 봤으면 null.
-- **작업**: `summary {device_id, from, to}`. analysis는 run이 끝나면 구간 기간으로, api는 착용 기록을 만들거나 고치면 고치기 전·후 기간을 합쳐서 넣습니다. 그 기간의 날짜마다, 그 장치에 겹치는 착용 기록이 있는 착용자 전원을 다시 계산합니다.
-- **규칙**:
-  - 걷기 구간 집계: 케이던스 = 2 × 분당 보폭. 거리 = 보폭 길이 합. 변동성(CV, SD, 표본 엔트로피)은 30초 이상 구간에서만.
-  - 일별 요약: `Asia/Seoul` 날짜에 시작한 현재 run의 걷기 구간. 자정을 넘는 것은 시작한 날. 속도·보폭 길이는 구간 길이별(10–30초, 30–60초, 60초 이상)로 따로. `wear_hours < 12`면 `data_sufficient = false`. 다시 계산하면 그 착용자·날짜의 세 표 행을 한 트랜잭션에서 지우고 새로 넣습니다.
-- **API**: `GET /v1/subjects/{id}/daily?from=&to=`(일별 요약), `GET /v1/bouts/{id}`(발별 보폭, 양발 걸음, 회전, 삽화).
-- **속도**: 일별 요약 다시 계산은 착용자 하루 10 ms 이하(그날 bout의 stride·step을 `(bout_id, …)` 색인으로만 읽음). 결과 쓰기는 run 하나 200 ms 이하(표마다 COPY 한 번).
+```
+Head ─▶ intake ─▶ segment ─▶ analysis ──C2──▶ gaitfusion (다듬기 → 걷기 구간 → 궤적과 특징)
+                                │ ◀── 결과 원문 + 궤적 ──┘
+                                ▼
+                  feature: 결과 원문 ─▶ feature.record (줄 단위, 낸 그대로)          ← run마다 자동
+                                ▼
+                  summary: 그날의 줄 ──지표 목록으로 풀이──▶ summary.daily_value ─▶ api ─▶ 앱의 추세
+                                ▼
+앱 ─▶ api ─ report 작업 ─▶ report: 기간의 줄 ─▶ 지표 값 + 지난 30일과 견줌 ─┐
+                                   논문 저장소 ─────▶ 논문 대목 ───────────┴▶ 글 쓰기 ─▶ report.* + 파일 ─▶ api ─▶ 앱
+```
 
-### 14.3 DDL 초안
+- **분석 단위는 셋입니다.** 신호 분석(analysis)은 서버가 정한 구간(SG)마다 구간이 닫힐 때 한 번 돕니다. 일별 값은 날짜마다 자동으로 계산합니다. 보고서는 사람이 고른 기간(하루, 몇 시간, 몇 분)마다 돕니다. 일별 값과 보고서는 gaitfusion을 부르지 않고, 저장된 `feature.record`를 착용자와 시각으로 읽습니다. 기간에 구간이 몇 개 걸쳐 있든 같습니다.
+- **쓰는 곳은 하나씩입니다.** gaitfusion은 DB와 파일을 만지지 않습니다(지금과 같음). `feature.*`는 feature 단계만, `summary.*`는 summary 단계만, `report.*`와 보고서 파일은 report 단계만 씁니다. 논문 저장소는 DB가 아니라 파일과 검색 색인이고 report 단계만 읽습니다(14.7절).
+- **보고서를 누가 언제 시작하는지는 흐름과 무관합니다.** 작업은 "착용자, 시작, 끝"만 받습니다.
+- **지표 값 계산은 한 곳입니다.** 일별 값과 보고서는 `pipeline/metrics.py`의 같은 순수 함수로 계산합니다. 하루를 기간으로 준 보고서의 값은 그날의 일별 값과 같습니다.
 
-1단계 DDL 위에 오류 없이 적용됨을 확인했습니다. 열의 뜻과 근거는 gait-features.md입니다.
+### 14.4 C4: 지표 규약 (MC)
+
+지표 목록 파일은 이 저장소에 둡니다. gaitfusion 저장소는 이 파일을 복사해 자기 출력을 검사하는 데 쓰고, 복사한 커밋을 적어 둡니다. 어느 쪽이 먼저 바꿔도 됩니다: gaitfusion이 목록에 없는 필드를 먼저 내면 서버는 받아 두고(MC-4), 목록에 항목이 생긴 때부터 풀이에 씁니다.
+
+- **MC-1 지표 목록.** `contracts/metrics.toml` 하나가 뜻의 기준입니다. 풀이에 쓰는 모든 값(gaitfusion이 내는 필드, 서버가 기간에 대해 계산하는 값)이 한 항목씩 있습니다. 일별 값, 보고서의 지표 값, 앱에 보이는 이름과 단위, 논문과의 연결이 모두 여기서 나옵니다. [gait-features.md](../gaitfusion/gait-features.md)는 근거 문헌과 고른 이유를 설명하는 글로 남고, 이름·단위·뜻이 다르면 지표 목록이 이깁니다.
+
+| 항목의 키 | 내용 |
+|---|---|
+| `id` | 고정 이름. `<수준>.<이름>` 꼴(예 `stride.length_m`, `window.freeze_index`, `period.speed_median_mps`). 한번 쓴 이름은 다른 뜻으로 다시 쓰지 않음 |
+| `level` | `stride`(보폭) · `step`(양발 걸음) · `turn`(회전) · `window`(10초 창) · `event`(삽화) · `period`(기간). 줄의 종류는 아래 `[[table]]` 항목이 정하므로 더할 수 있음 |
+| `type`, `unit`, `range` | 형(`number`·`integer`·`text`), 단위, 있을 수 있는 값의 범위(예 `length_m` 0–3). 범위 밖은 틀린 값으로 보고 풀이에 쓰지 않음 |
+| `names` | gaitfusion 지표만. 응답에서 이 지표의 필드 이름이 `id`의 이름 부분과 다를 때, 표 형식의 판마다 이름과 단위 환산 배수를 적음(예 `{"gaitfusion.stride/2" = {name = "len_cm", scale = 0.01}}`). 없으면 같은 이름 |
+| `producer` | `gaitfusion` 또는 `server` |
+| `show` | `basic`(착용자·보호자에게도 기본으로 보임) · `detail`(의료진·연구자 보기에서만). 계산과 저장은 둘 다 똑같이 하고, 보이는 범위만 다름(MC-8) |
+| `needs` | `one_foot` · `both_feet`. 발목 하나로 낼 수 있는지 |
+| `trust` | `validated`(문헌이 같은 부위·방법으로 검증) · `proxy`(대리 지표) · `low`(소규모 연구) · `unverified`(우리 센서 위치에서 검증 없음). 보고서가 이 값에 따라 말의 세기를 정함 |
+| `label`, `meaning` | 앱과 보고서에 보이는 짧은 이름, 한 문장 정의. 논문 검색도 이 문장을 씀 |
+| `sources` | 근거 논문의 key 목록(논문 저장소의 목록과 같은 key, 14.7절). 비어 있으면 보고서는 값만 적고 풀이하지 않음 |
+| `from` | `period` 지표만. 계산에 쓰는 값: 줄의 지표 `id`(예 `stride.duration_s`) 또는 서버가 아는 `bout.duration_s`(걷기 구간의 길이). `rule = "given"`이면 없음 |
+| `rule` | `period` 지표만. 계산 방법의 이름. 뜻은 RP-3의 표 |
+| `where` | `period` 지표만. 쓸 걷기 구간의 조건: `bout_min_s`(이상), `bout_max_s`(미만), `mode`(`fused`·`imu_only`). 없으면 전부 |
+| `by_side` | `period` 지표만. `true`면 발마다 값 하나, `false`면 값 하나(RP-3의 주 발 규칙) |
+| `min_n` | `period` 지표만. 값을 믿을 만하다고 보는 최소 표본 수 |
+
+```toml
+version = 1
+
+[[table]]                             # 응답 bouts[] 안의 배열 하나 = 줄의 종류 하나
+field = "strides"
+level = "stride"
+formats = ["gaitfusion.stride/1"]     # 서버가 풀이할 수 있는 판
+keys = { start = "start_s", end = "end_s", side = "side" }
+
+[[metric]]
+id = "stride.length_m"
+level = "stride"
+type = "number"
+unit = "m"
+range = [0.0, 3.0]
+producer = "gaitfusion"
+show = "detail"
+needs = "one_foot"
+trust = "validated"
+label = "보폭 길이"
+meaning = "한 발이 한 번 정지한 곳에서 다음에 정지한 곳까지의 수평 거리"
+sources = ["schlachetzki2017", "dias2023"]
+
+[[metric]]
+id = "period.stride_time_cv"
+level = "period"
+type = "number"
+unit = "ratio"
+producer = "server"
+show = "basic"
+needs = "one_foot"
+trust = "validated"
+label = "보폭 시간 변동"
+meaning = "보폭 시간의 변동 계수(표준편차 ÷ 평균). 걷기 구간마다 계산한 값들의 중앙값"
+sources = ["hausdorff2001", "shah2020"]
+from = "stride.duration_s"
+rule = "cv"
+where = { bout_min_s = 30 }
+by_side = true
+min_n = 3
+```
+
+- **MC-2 공통 규칙.** 모든 표 형식과 값 전달에 똑같이 적용합니다. 10절의 공통 규칙과 같은 뜻입니다.
+  - **값 없음**: `null`은 "계산하지 못함", 필드가 없는 것은 "이 판의 서비스가 내지 않음"입니다. 0, 빈 문자열, NaN으로 대신 쓰지 않습니다.
+  - **단위**: SI. 이름 끝에 단위를 붙입니다(`_m`, `_s`, `_mps`, `_deg`, `_dps`, `_hz`, `_g`, `_spm`). 접미가 없는 비율은 0–1입니다.
+  - **시각**: 응답 안에서는 `origin_head_us`를 0으로 한 초(`*_s`), DB에서는 `timestamptz`(`origin_at + 초`)입니다. 길이는 초입니다.
+  - **발**: `left`·`right`. 양발을 함께 보고 낸 값은 발이 `null`입니다.
+  - **출처**: 모든 값은 run 하나로 거슬러 올라갑니다. run에는 gaitfusion 판과 계산 방법의 판(`summary.method_versions`)이 있고, 일별 값과 보고서에는 계산할 때의 지표 목록 판이 있습니다.
+- **MC-3 표 형식의 이름과 판.** 줄의 종류마다 형식 이름과 판이 있습니다: `gaitfusion.stride/1`(지금 있음), `gaitfusion.step/1`, `gaitfusion.turn/1`, `gaitfusion.window/1`, `gaitfusion.event/1`. 서버가 만드는 것은 `uwbserver.report_input/1`입니다. 응답은 자기가 실은 형식을 `summary.formats`에 밝힙니다(예 `{"strides": "gaitfusion.stride/1"}`). 이 필드가 없는 지난 응답은 `strides`를 `gaitfusion.stride/1`로, 나머지 표는 `/1`로 봅니다. `c2_version`은 1 그대로입니다(더해지는 필드이므로).
+- **MC-4 받는 것은 넓게, 풀이는 지표 목록으로.** feature 단계는 줄의 값을 고르거나 바꾸지 않고 낸 그대로 저장합니다. 이름을 지표 `id`로 옮기고, 단위를 환산하고, 형과 범위를 보는 일은 **읽을 때** `pipeline/metrics.py` 한 곳에서 지표 목록으로 합니다. 그래서 gaitfusion의 형식이 바뀌어도 서버의 코드와 표는 그대로이고, 지표 목록을 고친 뒤 지난 run을 다시 풀 필요도 없습니다.
+
+| gaitfusion에서 바뀐 것 | 서버가 하는 일 | 사람이 할 일 |
+|---|---|---|
+| 줄에 값 필드가 늘어남 | 저장함. 이름을 `unknown_fields`에 적고 경고 로그 | 풀이에 쓰려면 지표 목록에 항목 추가 |
+| 필드가 빠지거나 `null` | 그 지표는 그 줄에서 값 없음. 기간에 값이 하나도 없으면 `no_data` | 없음 |
+| 필드 이름이 바뀜 | 저장함(새 이름은 `unknown_fields`에) | 지표 목록의 `names`에 한 줄 |
+| 단위나 뜻이 바뀜(형식의 판이 오름) | 저장함. 지표 목록의 `formats`에 그 판이 없는 동안은 그 판의 줄을 풀이에 쓰지 않음 | `formats`에 판을 더하고, 달라진 지표에 `names`(이름, 배수) 한 줄 |
+| 새 표(배열)가 생김 | 풀지 않고 이름을 `unknown_tables`에 적음. 결과 원문에는 남아 있음 | 지표 목록에 `[[table]]` 항목을 더한 뒤 다시 풀기(FT-5) |
+| 표가 없어짐 | 그 종류의 줄이 없음 | 없음 |
+
+- **MC-5 gaitfusion이 지킬 것.** 서버가 위처럼 받아들이려면 다음 둘은 지켜야 합니다. (1) 이미 내던 필드의 단위나 뜻을 바꿀 때는 그 표 형식의 판을 올립니다(`/2`). 같은 이름과 같은 판으로 뜻만 바꾸면 서버는 알 길이 없습니다. (2) 줄마다 시작·끝 시각이 있습니다. 필드를 더하거나 빼는 것, `null`을 내는 것은 판을 올리지 않습니다.
+- **MC-6 지금 어긋난 곳의 정리.** 세 문서가 다르게 적은 것을 gaitfusion이 실제로 내는 값에 맞춥니다.
+  - 보폭 한 줄은 **연속한 두 정지의 가운데 사이**입니다(예전 표 초안의 "착지부터 다음 착지까지"가 아님).
+  - `uwb_support`는 IMU 단독이면 **`null`**입니다(예전 표 초안의 0이 아님. MC-2의 값 없음 규칙).
+- **MC-7 검사.** `tests/contract/metrics/`가 다음을 확인합니다. gaitfusion 저장소도 복사한 목록 파일로 2번을 자기 출력에 돌립니다.
+  1. 목록 자체: `id`가 겹치지 않음, 이름의 단위 접미와 `unit`이 맞음, `period` 지표의 `from`이 있는 지표나 `bout.duration_s`를 가리킴, `rule`과 `where`의 이름이 RP-3에 있는 것, `sources`의 key가 `<첫 저자 성 소문자><연도>` 꼴(논문 목록과의 대조는 `papers.py check`, M10).
+  2. 응답 견본(`tests/contract/metrics/samples/`에 두는 진짜 gaitfusion 결과 하나와 가짜 gaitfusion 결과. 진짜 결과는 만든 gaitfusion 커밋을 같이 적음): 목록의 모든 gaitfusion 지표가 진짜 결과 견본에 실제로 있고 형과 범위가 맞음. 목록에 없는 필드가 있으면 이름을 보여 주며 실패(서버 운영에서는 경고일 뿐이지만, 시험에서는 목록을 맞추게 함).
+  3. MC-4 표의 줄마다: 그렇게 바꾼 응답을 넣어도 풀기가 실패하지 않고 표의 "서버가 하는 일"대로 됨.
+
+- **MC-8 처음 넣는 지표와 보이는 범위.** 지표 목록에는 **지금 실제로 나오는 값과 거기서 계산할 수 있는 값만** 넣습니다. gait-features.md의 점검표(전부 넣으면 100개가 넘음)를 미리 옮기지 않습니다. 서버는 목록에 없는 필드도 받아 두므로(MC-4), gaitfusion이 새 값을 내기 시작할 때 항목을 하나씩 더하면 됩니다. 계산의 기준은 의료진·연구자이고, 착용자에게는 `show = "basic"`인 것만 보입니다(2026-11-11 정함).
+
+| 묶음 | 지표 (`id`) | 발마다 | `show` |
+|---|---|---|---|
+| 보폭 줄 (gaitfusion, 9) | `stride.duration_s`, `stride.length_m`, `stride.speed_mps`, `stride.clearance_m`, `stride.heading_deg`, `stride.swing_s`, `stride.stance_s`, `stride.stance_ratio`, `stride.uwb_support` | 예 | 모두 `detail` |
+| 자료 범위 | `period.wear_time_s`(자료가 있던 시간) | — | `basic` |
+| | `period.fused_ratio`(걷기 시간 중 UWB 융합으로 계산한 걷기 구간의 비율) | — | `detail` |
+| 활동량 | `period.walking_time_s`, `period.bout_count`, `period.bout_duration_max_s` | — | `basic` |
+| | `period.stride_count`, `period.distance_m`, `period.bout_duration_median_s`, `period.bout_duration_p90_s`, `period.walking_share_over_60s`(60초 이상 걷기 구간이 걷기 시간에서 차지하는 비율) | `stride_count`만 | `detail` |
+| 속도 | `period.speed_median_mps` | — | `basic` |
+| | `period.speed_p95_mps`, `period.speed_10_30s_median_mps`, `period.speed_30_60s_median_mps`, `period.speed_over_60s_median_mps` | — | `detail` |
+| 보폭 | `period.stride_length_median_m` | 예 | `basic` |
+| | `period.cadence_median_spm`, `period.stride_time_median_s` | `stride_time`만 | `detail` |
+| 변동(30초 이상 걷기 구간) | `period.stride_time_cv` | 예 | `basic` |
+| | `period.stride_time_sd_s`, `period.swing_time_cv`, `period.stride_length_cv` | 예 | `detail` |
+| 발 움직임 | `period.clearance_median_m`, `period.stance_ratio_median` | 예 | `detail` |
+
+  보폭 줄 9개와 기간 지표 24개입니다. 그중 `basic`은 7개입니다. 속도의 상위값은 문헌의 보폭 속도 95백분위(gait-features.md 3절)에 맞춰 `p95`로 둡니다. 회전, 10초 창, 삽화, 양발 걸음과 거기서 나오는 기간 지표(회전 속도, 동결 횟수, 좌우 비대칭 등)는 gaitfusion이 내기 시작할 때 더합니다.
+
+### 14.5 특징 풀기 (FT)
+
+- **FT-1 작업.** analysis는 run을 `done`으로 저장하는 트랜잭션에서 `feature {run_id}` 작업을 넣습니다(`skipped` run은 넣지 않음). 작업 하나가 `feature.unpack` 행 하나와 그 run의 줄들을 만듭니다. 푸는 일이 실패해도 run, 걷기 구간, 궤적, 원본 보관에는 영향이 없습니다.
+- **FT-2 풀기.** 결과 원문 파일을 읽어 sha256을 run의 값과 대조합니다. `bouts[]`의 순번으로 `analysis.bout`를 찾고, 지표 목록의 `[[table]]`에 있는 배열마다 항목 하나를 `feature.record` 행 하나로 넣습니다. `kind`는 표의 `level`, `idx`는 배열 안 순번, 시각은 MC-2대로 옮기고, `v`는 그 항목 전체입니다. COPY 한 번, 전부 한 트랜잭션입니다.
+- **FT-3 버리는 것은 하나뿐.** 줄의 시작·끝이 유한한 수가 아니거나 끝이 시작보다 앞서거나 발 값이 틀리면 그 줄을 넣지 않고 `n_dropped_records`에 셉니다(행으로 만들 수 없으므로). 그 밖의 값은 형이나 범위가 틀려도 그대로 저장하고, 지표 목록으로 본 수를 `n_bad_values`에, 목록에 없는 필드 이름을 `unknown_fields`에, 목록에 없는 배열 이름을 `unknown_tables`에 적습니다. 셋 중 하나라도 있으면 경고 로그를 남깁니다.
+- **FT-4 읽기.** `feature.record`를 읽는 코드는 모두 `pipeline/metrics.py`의 `normalize(형식, 줄)`을 거쳐 `{지표 id: 값}`을 받습니다. 여기서 이름 옮기기, 단위 환산, 형과 범위 검사(틀리면 값 없음)를 합니다. 형식은 그 run의 `feature.unpack.formats`에서 옵니다. `v`를 직접 읽는 코드는 두지 않습니다.
+- **FT-5 다시 풀기.** 같은 run을 다시 풀면 한 트랜잭션에서 그 run의 `feature.unpack`과 `feature.record` 행을 지우고 새로 넣습니다. 지표 목록에 새 표를 더했을 때만 필요합니다. `feature.*`는 결과 원문에서 다시 만들 수 있으므로 등급은 결과이고, 이 삭제만 허용합니다.
+- **FT-6 지난 run 채우기.** `tools/unpack_features.py [--since 시각] [--all]`(TL-9)이 조건에 맞는 run마다 `feature` 작업을 넣습니다. 2단계를 처음 켤 때와 새 표를 더한 뒤에 씁니다.
+- **FT-7 현재 run.** 줄은 run마다 따로 있습니다. 읽는 쪽은 1단계와 같이 `analysis.current_run`으로 현재 run의 걷기 구간만 고릅니다.
+- **FT-8 끝나면.** 푼 트랜잭션에서 `summary {device_id, date_from, date_to}` 작업을 넣습니다. 날짜는 그 run의 걷기 구간이 걸친 `Asia/Seoul` 날짜이고, 재분석이면 옛 run의 걷기 구간이 걸친 날짜도 합칩니다. 걷기 구간이 없으면 넣지 않습니다.
+- **속도와 크기.** 1시간 구간 run 하나를 푸는 트랜잭션이 200 ms 이하입니다. 보폭 한 줄은 약 0.5 kB이므로, 하루 1.5시간 걷는 1-Tag 착용자 한 명이 연 약 1 GB입니다(13.2절의 가정).
+
+### 14.6 일별 값과 추세 (SM)
+
+- **SM-1 작업.** `summary {device_id, date_from, date_to}`. feature가 넣고(FT-8), api도 착용 기록을 만들거나 고칠 때 고치기 전·후 기간을 합쳐 넣습니다(1단계의 AP-5가 여기서 바뀜). 그 장치에 겹치는 착용 기록이 있는 착용자 전원을 날짜마다 다시 계산합니다. 같은 대상의 대기 작업은 하나이고, 도는 중에는 하나 더 대기할 수 있습니다(도는 사이 끝난 run을 놓치지 않으려고).
+- **SM-2 하루.** `Asia/Seoul` 날짜입니다. 현재 run의 걷기 구간 중 그 날짜에 시작했고 `analysis.bout_subject`가 그 착용자로 정한 것을 씁니다. 자정을 넘는 걷기 구간은 시작한 날에 넣습니다.
+- **SM-3 계산과 저장.** 지표 목록의 `period` 항목마다 `metrics.period_values`(14.7절 RP-3의 규칙)로 값을 계산합니다. 한 트랜잭션에서 그 착용자·날짜의 `summary.day`와 `summary.daily_value` 행을 지우고 새로 넣습니다. 값이 있는 지표만 행이 있고, 걷기가 없는 날은 행이 없습니다. 자료가 있던 시간과 걷기 시간도 지표입니다(`period.wear_time_s`, `period.walking_time_s`).
+- **SM-4 지표 목록이 바뀌면.** `tools/resummarize.py [--since 날짜]`(TL-11)이 지난 날짜의 `summary` 작업을 넣습니다. `period` 지표를 더하거나 `names`를 고친 뒤에 씁니다. 표는 그대로입니다.
+- **SM-5 추세 조회.** `summary.daily_value`를 착용자·지표·날짜 범위로 읽을 뿐이고 계산하지 않습니다. 앱은 지표의 이름·단위·믿을 만한 정도를 지표 목록 조회(`GET /v1/metrics`)로 받으므로, 지표가 늘어도 앱을 고치지 않고 보일 수 있습니다.
+- **속도.** 착용자의 하루 계산은 300 ms 이하(그날 걷기 구간의 줄만 읽음), 추세 조회는 지표 5개 × 1년에 20 ms 이하입니다.
+
+### 14.7 보고서 (RP)
+
+- **RP-1 작업.** `report {subject_id, from_at, to_at}`. api가 넣습니다. 같은 대상의 대기·실행 작업은 하나입니다(PL-2). 보고서 작업은 자기 작업 스레드에서 돌아(`REPORT_WORKERS`, 기본 1) analysis 작업을 늦추지 않습니다.
+- **RP-2 기간의 자료 고르기.** 현재 run의 걷기 구간 중 시작 시각이 `[from_at, to_at)` 안이고 `analysis.bout_subject`가 그 착용자로 정한 것을 고릅니다. 기간 경계에 걸친 걷기 구간은 시작한 쪽에 넣습니다. 아직 풀리지 않은 run(`feature.unpack` 행이 없음)이 있으면 작업을 1분 뒤로 미룹니다.
+- **RP-3 지표 값 계산.** `pipeline/metrics.py`의 순수 함수 `period_values`가 고른 걷기 구간과 그 줄에서, 지표 목록의 `period` 항목마다 값 하나를 계산합니다. 수치 계산은 모두 여기서 하고, 글을 쓰는 모델은 계산하지 않습니다. 걷기 구간이 하나도 없으면 글을 쓰지 않고 보고서를 `skipped`(`no_walking`)로 남깁니다.
+  - 계산 방법(`rule`)의 뜻. "값들"은 `where`에 맞는 걷기 구간에서 모은 `from`의 값입니다.
+
+| `rule` | 값 | `n` |
+|---|---|---|
+| `given` | 호출하는 쪽이 넘긴 값. `period.wear_time_s` = 기간과 겹치는 그 착용자의 구간 길이의 합(기간 안쪽만) | 1 |
+| `count` · `sum` · `max` | 값들의 개수 · 합 · 최댓값 | 값의 수 |
+| `median` · `p90` · `p95` | 값들을 한데 모아 낸 중앙값 · 90백분위 · 95백분위(사이 값은 선형 보간) | 값의 수 |
+| `cv` · `sd` | 걷기 구간마다 그 안의 값들로 변동 계수(표준편차 ÷ 평균) · 표준편차(표본, n − 1)를 내고, 그 값들의 중앙값. 값이 3개보다 적은 걷기 구간은 뺌 | 걷기 구간의 수 |
+| `ratio` | `where`에 맞는 걷기 구간의 값의 합 ÷ 모든 걷기 구간의 값의 합 | 모든 걷기 구간의 수 |
+| `cadence` | 보폭 시간마다 120 ÷ 보폭 시간(분당 걸음 수)을 내고 그 중앙값 | 값의 수 |
+
+  - 줄의 값에서 계산하는 지표는 길이 10초 이상인 걷기 구간만 씁니다(`where`의 `bout_min_s`가 10 이상). 변동(`cv`, `sd`)은 30초 이상입니다. 10초 미만 걷기 구간은 횟수와 시간(`bout.duration_s`에서 계산하는 지표)에만 셉니다.
+  - **발.** `by_side = true`인 지표는 발마다 그 발의 줄만으로 값 하나를 냅니다. `by_side = false`인데 줄의 값을 쓰는 지표는 걷기 구간마다 **주 발**(그 걷기 구간에서 보폭 줄이 더 많은 발, 같으면 왼발)의 줄만 씁니다. 두 발의 줄을 섞으면 같은 걸음을 두 번 세기 때문입니다.
+  - 값이 `null`인 줄은 그 지표의 계산에서 뺍니다. 양발이 있어야 하는 지표(`needs = "both_feet"`)는 양발 걷기 구간에서만 냅니다.
+  - 지표 값의 형식:
+
+```json
+{"metric": "period.stride_time_cv", "side": "left", "value": 0.031, "unit": "ratio",
+ "n": 14, "sufficient": true, "trust": "validated", "where": {"bout_min_s": 30},
+ "baseline": {"median": 0.027, "days": 19, "change": 0.004}}
+```
+
+  `value`가 `null`이면 `reason`이 붙습니다: `no_data`(기간의 줄에 그 값이 없음. 아직 나오지 않는 지표도 여기), `needs_both_feet`. `n`은 계산에 든 표본 수(지표에 따라 보폭 수 또는 걷기 구간 수), `sufficient`는 `n ≥ min_n`입니다.
+- **RP-4 지난 날들과 견주기.** `baseline`은 `from_at` 앞 30일의 `summary.daily_value`에서 `sufficient`인 날의 중앙값(`median`), 그런 날의 수(`days`), 값과의 차이(`change`)입니다. 그런 날이 7일보다 적으면 `baseline`을 붙이지 않습니다. 기간이 하루보다 짧으면 일별 값과 조건이 달라 그대로 견주기 어려우므로, 보고서 입력에 `baseline_comparable = false`를 적고 글에 정해진 주의 문구를 넣습니다.
+- **RP-5 논문 저장소.** DB가 아니라 파일입니다. report 단계만 읽고, 사람이 도구(`tools/papers.py`, TL-10)로 넣습니다.
+
+```
+/data/papers/
+  papers.toml          ← 목록: key, 제목, 저자, 연도, doi, 원문 파일, 쓸 수 있는 범위(사용 허락)
+  source/<key>.pdf     ← 원문. 사람이 넣음. 등급: 영구 원본(백업 대상)
+  passages/<key>.jsonl ← 원문을 나눈 대목. 줄마다 {id: "<key>#<순번>", page, text}. 원문에서 다시 만들 수 있음
+  index/               ← 대목의 검색 색인. 대목마다 수치 벡터 하나를 담은 파일. 등급: 캐시(지워도 passages에서 다시 만듦)
+```
+
+  `key`는 지표 목록의 `sources`가 가리키는 이름입니다(예 `schlachetzki2017`). `papers_version`은 `papers.toml`의 sha256입니다. 논문은 수백 편 이하이므로 별도 검색 서비스를 두지 않고, report가 색인 파일을 읽어 프로세스 안에서 견줍니다.
+- **RP-6 근거 찾기.** 값이 있는 지표마다, 그 지표의 `sources`에 든 논문의 대목 안에서만 찾습니다. 지표의 `meaning`으로 검색해 가까운 순으로 몇 개(`REPORT_PASSAGES_PER_METRIC`, 기본 3)를 고릅니다. 지표와 논문의 연결은 지표 목록이 정하고, 검색은 그 논문 안에서 맞는 대목을 고르는 일만 합니다. 그래서 다른 지표의 논문이 근거로 붙지 않습니다. `sources`가 빈 지표는 대목 없이 넘어갑니다.
+- **RP-7 보고서 입력.** 글 쓰기에 넘기는 것은 `uwbserver.report_input/1` 하나이고, 이것을 그대로 파일로 저장합니다.
+
+| 키 | 내용 |
+|---|---|
+| `schema`, `catalog_version` | `uwbserver.report_input/1`, 지표 목록의 판 |
+| `subject` | 착용자 코드, 키, 다리 길이, 마비측(없으면 `null`). 실명은 없음 |
+| `period`, `baseline_comparable` | `from_at`, `to_at`, RP-4의 표시 |
+| `coverage` | 자료가 있던 시간(구간의 합), 걷기 시간, 걷기 구간 수, 찬 발, 센서 위치(`lateral_ankle`), UWB 융합 비율, `partial` run 수, 주인이 모호해 뺀 걷기 구간 수 |
+| `values` | RP-3·RP-4의 지표 값 배열. 지표마다 `label`, `meaning`, `show`를 함께 |
+| `passages` | RP-6에서 찾은 논문 대목 배열: `{id, paper_key, metric, text}` |
+| `runs` | 읽은 run id 목록 |
+
+- **RP-8 글 쓰기.** `report/writer.py`가 보고서 입력을 바깥의 글 쓰는 모델 API에 보내 글을 받습니다(`analysis/gaitfusion.py`와 같은 자리). 바깥으로 나가는 것은 보고서 입력뿐입니다: 착용자 코드, 지표 값, 공개된 논문 대목. 실명, 원본 신호, 궤적, 보폭 줄은 나가지 않습니다(2026-11-11 정함).
+  - 모델은 수치를 직접 적지 않고 자리 표시(`{v3}` = `values`의 3번)를 적습니다. 서버가 그 자리에 값과 단위를 넣습니다. 그래서 글 안의 수치가 계산한 값과 다를 수 없습니다.
+  - 모델은 뜻을 풀이하는 문단마다 인용 자리 표시(`[p2]` = `passages`의 2번)를 붙입니다.
+  - 서버의 검사: 모든 자리 표시가 입력에 있는 번호를 가리킴. 자리 표시 밖에 숫자로 적은 측정값이 없음. 인용 없는 풀이 문단이 없음. `sufficient = false`이거나 `trust`가 `validated`가 아닌 값을 쓴 문단에는 정해진 주의 문구가 있음. 어기면 한 번 다시 쓰게 하고, 또 어기면 작업을 `failed`로 둡니다.
+  - 글은 정해진 제목 둘로 나눕니다: **요약**(`show = "basic"`인 값만 써서 쉬운 말로 몇 문장)과 **상세**(모든 값, 의료진·연구자 기준). 서버는 요약 부분에 `basic`이 아닌 값의 자리 표시가 없는지도 검사합니다. 착용자에게는 요약만 잘라 보입니다(14.8절).
+  - 글의 첫머리에 "진단이 아니며 참고용"이라는 정해진 문구를 서버가 붙입니다.
+  - 호출 실패와 시간 초과는 PL-2의 재시도입니다.
+- **RP-9 저장.** 호출 전에 보고서 id를 받고(AN-6과 같음), 보고서 입력(`/data/report/<id>/input.json.gz`)과 글(`/data/report/<id>/report.md`)을 임시 이름 → fsync → 이름 바꾸기로 쓴 뒤, 한 트랜잭션에서 `report.report`, `report.report_run`, `report.citation` 행을 넣고 작업을 `done`으로 바꿉니다. 같은 기간을 다시 만들면 새 보고서이고 옛 것은 남습니다. 보고서 파일은 백업합니다(글 쓰는 모델의 답은 같은 입력에서도 달라질 수 있어 다시 만들 수 없음).
+
+### 14.8 앱 API에 더하는 것 (C3)
+
+| 메서드와 경로 | 내용 | 권한 | 폴더 |
+|---|---|---|---|
+| `GET /v1/metrics` | 지표 목록: `id`, `level`, `label`, `unit`, `meaning`, `trust`, `needs`, `show`, 지표 목록의 판. 앱은 `show`로 착용자 화면에 보일 지표를 고름 | 로그인 | summary |
+| `GET /v1/subjects/{id}/trend?metrics=&from=&to=` | 지표마다·발마다 일별 값의 배열 `{metric, side, points: [{date, value, n, sufficient}]}`. `metrics`는 쉼표로 이은 `period.*` id(최대 10개), 날짜 범위는 최대 366일 | 본인, admin | summary |
+| `GET /v1/bouts/{id}/records?kind=` | 걷기 구간 하나의 줄(보폭 등). 값은 지표 `id`로 옮긴 것(FT-4) | 본인, admin | feature |
+| `POST /v1/subjects/{id}/reports` | `{from, to}` → 202 `{subject_id, from, to, queued}`(이미 대기 중이면 `queued = false`). 기간은 1분 이상 31일 이하 | 본인, admin | report |
+| `GET /v1/subjects/{id}/reports?from=&to=` | 보고서 목록(id, 기간, 상태, 만든 시각) | 본인, admin | report |
+| `GET /v1/reports/{id}?view=detail` | 보고서 하나: 글 원문, 지표 값 배열, 인용한 논문(제목, 저자, 연도, doi, 인용한 대목), 자료 범위(`coverage`). `view=basic`이면 글의 요약 부분, `show = "basic"`인 값, 요약이 인용한 논문만 | 본인, admin | report |
+| `GET /v1/runs/{id}` (바뀜) | 푼 기록을 함께: 줄 수, `n_dropped_records`, `n_bad_values`, `unknown_fields`, `unknown_tables` | admin | analysis |
+
+### 14.9 DDL 초안
+
+1단계 DDL(001–008) 위에 오류 없이 적용됨을 확인했습니다(2026-11-11, PostgreSQL 17.6). 분석 값의 이름·단위·뜻은 표가 아니라 지표 목록이 정하므로, 지표가 늘거나 바뀌어도 이 표들은 바뀌지 않습니다.
 
 ```sql
--- 009_analysis_features.sql (초안)
+-- 009_feature.sql (초안)
+CREATE SCHEMA feature;
+
+-- 작업 종류 feature를 더함. 대상은 archive처럼 run 하나.
 ALTER TABLE pipeline.job DROP CONSTRAINT job_kind_check;
-ALTER TABLE pipeline.job ADD CONSTRAINT job_kind_check CHECK (kind IN ('analysis','archive','summary'));
-ALTER TABLE pipeline.job ADD COLUMN device_id text, ADD COLUMN date_from date, ADD COLUMN date_to date;
-ALTER TABLE pipeline.job ADD CHECK ((kind = 'summary') = (device_id IS NOT NULL AND date_from IS NOT NULL AND date_to IS NOT NULL));
+ALTER TABLE pipeline.job ADD CONSTRAINT job_kind_check CHECK (kind IN ('analysis','archive','feature'));
+ALTER TABLE pipeline.job DROP CONSTRAINT job_check1;
+ALTER TABLE pipeline.job ADD CONSTRAINT job_run_target CHECK ((kind IN ('archive','feature')) = (run_id IS NOT NULL));
+CREATE UNIQUE INDEX job_one_feature ON pipeline.job (run_id) WHERE kind = 'feature' AND state IN ('queued','running');
 
--- 등급: 결과. 걷기 구간 하나의 집계. bout 하나에 한 행.
-CREATE TABLE analysis.bout_stat (
-  bout_id         bigint  PRIMARY KEY REFERENCES analysis.bout(id),
-  n_strides       integer NOT NULL,             -- 한 발 기준 보폭 수. 양발이면 많은 쪽
-  distance_m      real,
-  duration_s      real    NOT NULL,
-  mean_speed_mps  real,
-  cadence_spm     real                          -- 2 × 분당 보폭
+-- 등급: 결과(결과 원문 파일에서 다시 만들 수 있음). run 하나를 푼 기록. 다시 풀면 이 행과 그 run의 record 행을 지우고 새로 넣음.
+CREATE TABLE feature.unpack (
+  run_id            bigint      PRIMARY KEY REFERENCES analysis.run(id),
+  catalog_version   integer     NOT NULL,       -- 풀 때의 지표 목록 판(아래 세 값은 이 판으로 본 것)
+  formats           jsonb       NOT NULL,       -- 응답이 밝힌 표 형식. 예 {"strides": "gaitfusion.stride/1"}
+  n_records         integer     NOT NULL,       -- 넣은 줄 수
+  n_dropped_records integer     NOT NULL,       -- 시작·끝·발이 틀려 버린 줄 수
+  n_bad_values      integer     NOT NULL,       -- 지표 목록의 형이나 범위에 맞지 않은 값 수(값은 그대로 저장됨)
+  unknown_fields    text[]      NOT NULL,       -- 지표 목록에 없던 필드. '<표>.<필드>' 꼴
+  unknown_tables    text[]      NOT NULL,       -- 지표 목록에 없던 표(풀지 않음)
+  core_version      text        NOT NULL,
+  unpacked_at       timestamptz NOT NULL
 );
 
--- 등급: 결과. 회전. stride.turn_id가 가리키므로 stride보다 먼저.
-CREATE TABLE analysis.turn (
-  id                bigserial   PRIMARY KEY,
-  bout_id           bigint      NOT NULL REFERENCES analysis.bout(id),
-  start_at          timestamptz NOT NULL,
-  end_at            timestamptz NOT NULL,
-  angle_deg         real        NOT NULL,       -- 부호 있음(좌회전 +)
-  peak_velocity_dps real,
-  mean_velocity_dps real,
-  n_strides         integer,
-  jerk              real,
-  UNIQUE (bout_id, id)                          -- stride의 복합 FK용
+-- 등급: 결과. 분석 결과의 줄 하나: 보폭 하나, 걸음 하나, 회전 하나, 10초 창 하나, 삽화 하나.
+-- 값은 gaitfusion이 낸 그대로 v에 둠. 이름·단위·뜻은 읽을 때 지표 목록이 정함(MC-4).
+CREATE TABLE feature.record (
+  id        bigserial   PRIMARY KEY,
+  bout_id   bigint      NOT NULL REFERENCES analysis.bout(id),
+  kind      text        NOT NULL,               -- 'stride'·'step'·'turn'·'window'·'event'와 지표 목록이 더하는 것. CHECK 없음
+  idx       integer     NOT NULL,               -- 응답 배열 안의 순번, 0부터
+  side      text        CHECK (side IN ('left','right')),   -- NULL = 발 구분 없음
+  start_at  timestamptz NOT NULL,
+  end_at    timestamptz NOT NULL,
+  v         jsonb       NOT NULL,               -- 응답의 그 줄 전체. 조회 조건에 쓰지 않음(9절)
+  UNIQUE (bout_id, kind, idx)                   -- 걷기 구간의 줄을 읽는 색인을 겸함
 );
 
--- 등급: 결과. 한 발의 보폭 하나(그 발 착지부터 다음 착지까지). 수치 열은 real, NULL = 계산 못 함.
-CREATE TABLE analysis.stride (
-  id                   bigserial   PRIMARY KEY,
-  bout_id              bigint      NOT NULL REFERENCES analysis.bout(id),
-  side                 text        NOT NULL CHECK (side IN ('left','right')),
-  idx                  integer     NOT NULL,    -- 구간 안, 그 발의 순번 0부터
-  start_at             timestamptz NOT NULL,
-  end_at               timestamptz NOT NULL,
-  duration_s           real        NOT NULL,
-  length_m             real,
-  speed_mps            real,
-  heading_deg          real,
-  clearance_m          real,                    -- swing 최대 높이 − 시작 높이
-  min_clearance_m      real,                    -- swing 중 최소 발 높이(MTC)
-  min_clearance_t_s    real,                    -- 그 시각, 보폭 시작 기준 초
-  stance_s             real,
-  swing_s              real,
-  stance_ratio         real,
-  lateral_dev_m        real,                    -- 진행선에서 최대 측방 편차
-  pitch_at_strike_deg  real,                    -- 정강이 pitch (발 각도의 대리)
-  pitch_at_toeoff_deg  real,
-  swing_peak_gyro_dps  real,
-  stance_min_gyro_dps  real,
-  strike_peak_g        real,
-  swing_peak_speed_mps real,
-  uwb_support          real        NOT NULL,    -- 0–1. IMU 단독이면 0
-  turn_id              bigint,                  -- NULL = 직진
-  UNIQUE (bout_id, side, idx),                  -- bout 상세·일별 계산의 조회 색인을 겸함
-  FOREIGN KEY (bout_id, turn_id) REFERENCES analysis.turn(bout_id, id)   -- 같은 bout의 turn만
-);
+GRANT USAGE ON SCHEMA feature TO core_rw, api_rw;
+GRANT SELECT, INSERT, DELETE ON ALL TABLES IN SCHEMA feature TO core_rw;   -- 다시 풀기는 지우고 새로 넣음
+GRANT SELECT ON ALL TABLES IN SCHEMA feature TO api_rw;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA feature TO core_rw;
 
--- 등급: 결과. 양발 걸음 하나: 반대 발 착지부터 이 발 착지까지. 양발 bout에만 행이 있음.
-CREATE TABLE analysis.step (
-  id                bigserial   PRIMARY KEY,
-  bout_id           bigint      NOT NULL REFERENCES analysis.bout(id),
-  idx               integer     NOT NULL,       -- 구간 안 순번 0부터(발 구분 없이 시간 순)
-  side              text        NOT NULL CHECK (side IN ('left','right')),   -- 이 걸음을 끝내며 착지한 발
-  start_at          timestamptz NOT NULL,       -- 반대 발 착지
-  end_at            timestamptz NOT NULL,       -- 이 발 착지
-  step_time_s       real        NOT NULL,
-  step_length_m     real,                       -- 착지 순간 두 발 사이, 진행 방향 성분
-  step_width_m      real,                       -- 같은 순간, 진행 방향에 수직 성분
-  double_support_s  real,                       -- 걸음 시작의 양발 접지 시간
-  single_support_s  real,                       -- 반대 발 swing 동안 이 발만 접지한 시간
-  uwb_support       real        NOT NULL,       -- 두 발 UWB 수락 비율 중 작은 값. IMU 단독이면 0
-  UNIQUE (bout_id, idx)
-);
-
--- 등급: 결과. 걷기 구간 안 10초 창(겹침 50 %), 발마다 그 발의 원시 신호에서 gaitfusion이 계산.
-CREATE TABLE analysis.bout_window (
-  id                      bigserial   PRIMARY KEY,
-  bout_id                 bigint      NOT NULL REFERENCES analysis.bout(id),
-  side                    text        NOT NULL CHECK (side IN ('left','right')),
-  start_at                timestamptz NOT NULL,
-  end_at                  timestamptz NOT NULL,
-  freeze_index            real,                 -- P(3–8 Hz) / P(0.5–3 Hz)
-  power_locomotor         real,
-  power_freeze            real,
-  dominant_freq_hz        real,
-  dominant_amp            real,
-  stride_regularity       real,                 -- 자기상관, 보폭 지연
-  harmonic_ratio_ap       real,
-  harmonic_ratio_v        real,
-  harmonic_ratio_ml       real,
-  local_dynamic_stability real,
-  sample_entropy          real,
-  jerk_rms                real,
-  acc_rms_v               real,
-  acc_rms_ap              real,
-  acc_rms_ml              real,
-  gyro_rms                real,
-  mean_speed_mps          real,
-  n_strides               integer,
-  uwb_support             real
-);
-CREATE INDEX bout_window_bout ON analysis.bout_window (bout_id, side, start_at);
-
--- 등급: 결과. 삽화. gaitfusion 안의 원시 창 모델 결과.
-CREATE TABLE analysis.gait_event (
-  id             bigserial   PRIMARY KEY,
-  bout_id        bigint      NOT NULL REFERENCES analysis.bout(id),
-  side           text        CHECK (side IN ('left','right')),   -- NULL = 양발 신호를 함께 보고 판정
-  start_at       timestamptz NOT NULL,
-  end_at         timestamptz NOT NULL,
-  type           text        NOT NULL CHECK (type IN ('fog')),
-  score          real        NOT NULL,          -- 0–1
-  method_version text        NOT NULL           -- 'fi-1.0', 'cnn-0.3' …
-);
-CREATE INDEX gait_event_bout ON analysis.gait_event (bout_id, start_at);
-
-GRANT SELECT, INSERT ON analysis.bout_stat, analysis.turn, analysis.stride, analysis.step,
-                        analysis.bout_window, analysis.gait_event TO core_rw;
-GRANT SELECT ON analysis.bout_stat, analysis.turn, analysis.stride, analysis.step,
-                analysis.bout_window, analysis.gait_event TO api_rw;
-GRANT USAGE ON ALL SEQUENCES IN SCHEMA analysis TO core_rw;
-
--- 009_summary.sql (초안)
+-- 010_summary.sql (초안)
 CREATE SCHEMA summary;
 
--- 일별 요약은 표 셋: 사람(daily, 날마다 한 행), 발(daily_side, 그날 데이터가 있던 발만),
--- 양발(daily_bilateral, 양발 bout가 있던 날만). 셋 다 현재 run으로 계산.
+-- 작업 종류 summary를 더함. 대상은 장치와 날짜 범위(그 장치를 찬 착용자 전원을 다시 계산).
+ALTER TABLE pipeline.job DROP CONSTRAINT job_kind_check;
+ALTER TABLE pipeline.job ADD CONSTRAINT job_kind_check CHECK (kind IN ('analysis','archive','feature','summary'));
+ALTER TABLE pipeline.job ADD COLUMN device_id text, ADD COLUMN date_from date, ADD COLUMN date_to date;
+ALTER TABLE pipeline.job ADD CONSTRAINT job_summary_target
+  CHECK ((kind = 'summary') = (device_id IS NOT NULL AND date_from IS NOT NULL AND date_to IS NOT NULL));
+CREATE UNIQUE INDEX job_one_summary ON pipeline.job (device_id, date_from, date_to)
+  WHERE kind = 'summary' AND state = 'queued';   -- 도는 중에 새 run이 끝나면 하나 더 대기할 수 있게 queued만
 
--- 등급: 결과. 착용자의 하루, 어느 발을 찼는지와 무관한 값.
-CREATE TABLE summary.daily (
-  subject_id                bigint  NOT NULL REFERENCES registry.subject(id),
-  date                      date    NOT NULL,   -- Asia/Seoul
-  sides                     text    CHECK (sides IN ('left','right','both')),   -- NULL = 걷기 없음
-  wear_hours                real,               -- 앵커 방 안에서 데이터가 있던 시간(segment에서 계산)
-  walking_time_s            real,
-  n_bouts                   integer,
-  n_strides                 integer,            -- bout_stat.n_strides 합(한 발 기준)
-  est_steps                 integer,            -- 2 × n_strides
-  distance_m                real,
-  bout_duration_median_s    real,
-  bout_duration_p90_s       real,
-  longest_bout_s            real,
-  share_time_bouts_over_60s real,
-  speed_median_mps          real,
-  speed_p90_mps             real,
-  speed_10_30s_median_mps   real,
-  speed_30_60s_median_mps   real,
-  speed_over_60s_median_mps real,
-  stride_length_median_m    real,
-  cadence_median_spm        real,
-  n_turns                   integer,
-  turn_angle_median_deg     real,
-  turn_velocity_median_dps  real,
-  steps_per_turn_median     real,
-  steps_per_turn_cv         real,
-  n_fog                     integer,
-  fog_time_ratio            real,
-  fused_ratio               real,               -- 융합 모드 보폭 비율
-  data_sufficient           boolean NOT NULL,   -- wear_hours 기준 통과
-  computed_at               timestamptz NOT NULL,
+-- 등급: 결과(feature에서 다시 계산). 착용자의 하루를 계산한 기록. 걷기가 있던 날만 행이 있음.
+CREATE TABLE summary.day (
+  subject_id      bigint      NOT NULL REFERENCES registry.subject(id),
+  date            date        NOT NULL,         -- Asia/Seoul
+  catalog_version integer     NOT NULL,
+  computed_at     timestamptz NOT NULL,
   PRIMARY KEY (subject_id, date)
 );
 
--- 등급: 결과. 한 발의 하루. 그 발의 보폭 행이 있던 날만.
-CREATE TABLE summary.daily_side (
-  subject_id               bigint  NOT NULL REFERENCES registry.subject(id),
-  date                     date    NOT NULL,
-  side                     text    NOT NULL CHECK (side IN ('left','right')),
-  n_strides                integer NOT NULL,
-  stride_time_median_s     real,
-  stride_time_cv           real,                -- 변동성은 ≥ 30초 구간만
-  swing_time_cv            real,
-  stride_length_median_m   real,
-  stride_length_cv         real,
-  lateral_dev_sd_m         real,
-  clearance_median_m       real,
-  min_clearance_median_m   real,
-  min_clearance_cv         real,
-  stance_ratio_median      real,
-  freeze_index_median      real,
-  stride_regularity_median real,
-  harmonic_ratio_ap_median real,
-  computed_at              timestamptz NOT NULL,
-  PRIMARY KEY (subject_id, date, side),
-  FOREIGN KEY (subject_id, date) REFERENCES summary.daily(subject_id, date)
-);
-
--- 등급: 결과. 양발 하루. 양발 bout가 있던 날만. 비대칭 = |왼 − 오른| ÷ 두 값의 평균(두 발 중앙값으로).
-CREATE TABLE summary.daily_bilateral (
-  subject_id                  bigint  NOT NULL REFERENCES registry.subject(id),
-  date                        date    NOT NULL,
-  bilateral_walking_time_s    real    NOT NULL,
-  n_steps                     integer NOT NULL,
-  step_length_median_m        real,
-  step_length_asymmetry       real,
-  step_time_asymmetry         real,
-  swing_time_asymmetry        real,
-  stance_time_asymmetry       real,
-  double_support_ratio_median real,             -- 양발 지지 시간 ÷ 보폭 시간
-  double_support_cv           real,             -- ≥ 30초 구간만
-  step_width_median_m         real,
-  step_width_cv               real,             -- ≥ 30초 구간만
-  computed_at                 timestamptz NOT NULL,
-  PRIMARY KEY (subject_id, date),
-  FOREIGN KEY (subject_id, date) REFERENCES summary.daily(subject_id, date)
+-- 등급: 결과. 그날의 지표 값 하나. 값이 있는 것만 행이 있음. 지표가 늘어도 표는 바뀌지 않음.
+CREATE TABLE summary.daily_value (
+  subject_id bigint  NOT NULL,
+  date       date    NOT NULL,
+  metric     text    NOT NULL,                  -- 지표 목록의 id (period.*)
+  side       text    CHECK (side IN ('left','right')),   -- NULL = 발 구분 없음
+  value      double precision NOT NULL,
+  n          integer NOT NULL,                  -- 계산에 든 표본 수
+  sufficient boolean NOT NULL,                  -- n ≥ 지표의 min_n
+  FOREIGN KEY (subject_id, date) REFERENCES summary.day(subject_id, date),
+  UNIQUE NULLS NOT DISTINCT (subject_id, metric, side, date)   -- 추세 조회의 색인
 );
 
 GRANT USAGE ON SCHEMA summary TO core_rw, api_rw;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA summary TO core_rw;   -- 다시 계산은 지우고 새로 넣음
+GRANT SELECT, INSERT, DELETE ON ALL TABLES IN SCHEMA summary TO core_rw;   -- 다시 계산은 그날 행을 지우고 새로 넣음
 GRANT SELECT ON ALL TABLES IN SCHEMA summary TO api_rw;
+
+-- 011_report.sql (초안)
+CREATE SCHEMA report;
+
+-- 작업 종류 report를 더함. 대상은 착용자와 기간.
+ALTER TABLE pipeline.job DROP CONSTRAINT job_kind_check;
+ALTER TABLE pipeline.job ADD CONSTRAINT job_kind_check CHECK (kind IN ('analysis','archive','feature','summary','report'));
+ALTER TABLE pipeline.job ADD COLUMN subject_id bigint, ADD COLUMN from_at timestamptz, ADD COLUMN to_at timestamptz;
+ALTER TABLE pipeline.job ADD CONSTRAINT job_report_target
+  CHECK ((kind = 'report') = (subject_id IS NOT NULL AND from_at IS NOT NULL AND to_at IS NOT NULL));
+CREATE UNIQUE INDEX job_one_report ON pipeline.job (subject_id, from_at, to_at)
+  WHERE kind = 'report' AND state IN ('queued','running');
+
+-- 등급: 결과. 기간 하나의 보고서. 끝날 때 한 번 INSERT. 실패하면 행을 만들지 않음(pipeline.job에 남음).
+-- 같은 기간을 다시 만들면 새 행이고 옛 행은 남음. id는 core가 먼저 nextval로 받아 파일 경로에 씀.
+CREATE TABLE report.report (
+  id              bigserial   PRIMARY KEY,
+  subject_id      bigint      NOT NULL REFERENCES registry.subject(id),
+  from_at         timestamptz NOT NULL,
+  to_at           timestamptz NOT NULL,
+  status          text        NOT NULL CHECK (status IN ('done','skipped')),
+  skip_reason     text,                         -- 'no_walking'(RP-3)
+  catalog_version integer     NOT NULL,         -- 지표 목록의 판
+  papers_version  text,                         -- 논문 목록 파일의 sha256(RP-5)
+  writer_version  text,                         -- 글을 쓴 모델 이름과 지시문 판
+  core_version    text        NOT NULL,
+  input_path      text        UNIQUE,           -- '/data/report/<id>/input.json.gz' (uwbserver.report_input/1)
+  input_sha256    bytea,                        -- 압축 전 바이트의 sha256
+  text_path       text        UNIQUE,           -- '/data/report/<id>/report.md'
+  n_values        integer,                      -- 입력에 든 지표 값 수
+  started_at      timestamptz NOT NULL,
+  finished_at     timestamptz NOT NULL,
+  CHECK (to_at > from_at),
+  CHECK ((status = 'done') = (text_path IS NOT NULL AND input_path IS NOT NULL)),
+  CHECK ((status = 'skipped') = (skip_reason IS NOT NULL))
+);
+CREATE INDEX report_subject ON report.report (subject_id, from_at, id DESC);
+
+-- 등급: 결과. 보고서가 읽은 run(그때의 현재 run).
+CREATE TABLE report.report_run (
+  report_id bigint NOT NULL REFERENCES report.report(id),
+  run_id    bigint NOT NULL REFERENCES analysis.run(id),
+  PRIMARY KEY (report_id, run_id)
+);
+
+-- 등급: 결과. 보고서가 인용한 논문 대목.
+CREATE TABLE report.citation (
+  report_id  bigint  NOT NULL REFERENCES report.report(id),
+  idx        integer NOT NULL,                  -- 글 안의 인용 번호, 1부터
+  paper_key  text    NOT NULL,                  -- 논문 목록의 key
+  passage_id text    NOT NULL,                  -- '<key>#<순번>'
+  metric     text    NOT NULL,                  -- 이 대목이 근거가 된 지표 id
+  PRIMARY KEY (report_id, idx)
+);
+
+GRANT USAGE ON SCHEMA report TO core_rw, api_rw;
+GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA report TO core_rw;
+GRANT SELECT ON ALL TABLES IN SCHEMA report TO api_rw;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA report TO core_rw;
 ```
+
+### 14.10 코드, 시험, 구현 순서
+
+**폴더.** 단계 셋을 더합니다. import 규칙(3.2절)의 흐름 단계 줄에 셋을 넣고, 서로 import하지 않는 것도 같습니다.
+
+```
+contracts/      metrics.toml                                   ← C4 지표 목록
+src/uwbserver/
+  pipeline/     metrics.py                                     ← 지표 목록 읽기, normalize, period_values (순수 코드, wire.py와 같은 자리)
+  feature/      rules.py store.py run.py routes.py
+  summary/      store.py run.py routes.py
+  report/       rules.py store.py run.py routes.py writer.py papers.py
+tools/          unpack_features.py resummarize.py papers.py fake_writer.py
+tests/          contract/metrics/  feature/  summary/  report/
+```
+
+**시험과 합격 기준.**
+
+**M7 지표 규약 (MC)**
+1. MC-7의 세 검사가 통과.
+2. 지표 목록에 MC-8의 표 그대로 33개(보폭 줄 9, 기간 24)가 있고, 항목마다 `label`, `meaning`, `trust`, `show`가 차 있음. `sources`는 gait-features.md의 참고 문헌에서 옮긴 key(논문 원문은 M10에서 모음).
+3. gaitfusion이 `summary.formats`를 내고, 복사한 지표 목록으로 자기 출력 검사를 통과(gaitfusion 저장소의 일).
+
+**M8 특징 풀기 (FT)**
+1. 가짜 gaitfusion의 run → `feature.unpack`과 줄. 줄 수와 `v`가 결과 원문과 같음.
+2. MC-4 표의 경우를 하나씩 넣은 응답 → 표대로이고 숫자와 이름이 `feature.unpack`에 있음. run과 걷기 구간은 그대로. 지표 목록에 `names` 한 줄을 더하면 다시 풀지 않고도 그 값이 읽힘.
+3. 시작·끝이 틀린 줄 → 그 줄만 빠지고 `n_dropped_records`에 셈.
+4. 다시 풀기 → 행이 같음(id 제외). `unpack_features.py`로 지난 run이 채워짐.
+5. 진짜 gaitfusion 전 구간 시험(M3-9)에 이어 그 run의 보폭 줄이 있고 `n_bad_values = 0`, `unknown_fields`가 빔.
+6. 속도: 1시간 구간 run을 푸는 트랜잭션 200 ms 이하.
+
+**M9 기간 계산, 일별 값, 추세 (RP-2, RP-3, SM)**
+1. 손으로 답을 아는 합성 보폭 줄 → `period` 지표마다 기대 값. 30초 조건, 길이별 나눔, 발별·양발 지표, `no_data`·`needs_both_feet`.
+2. 기간 경계: 경계에 걸친 걷기 구간이 시작한 쪽에만 들어감. 기간을 둘로 쪼갠 횟수·시간의 합이 통째로 계산한 값과 같음.
+3. run이 끝나면 그날의 일별 값이 생김. 재분석 뒤에는 새 run의 값으로 바뀜. 착용 기록을 고치면 두 착용자의 그 날짜가 다시 계산됨(SM-1).
+4. 하루를 기간으로 준 `period_values`의 값이 그날의 `summary.daily_value`와 같음.
+5. 추세 조회: 정상, 남의 착용자(404), 모르는 지표(422). `GET /v1/metrics`가 지표 목록과 같음.
+6. 속도: 착용자 1년치 합성 데이터에서 하루 계산 300 ms 이하, 추세 조회 20 ms 이하이고 색인을 탐.
+
+**M10 논문 저장소 (RP-5, RP-6)**
+1. `papers.py add`로 넣은 논문이 목록·원문·대목에 있음. `papers.py build`로 색인을 지우고 다시 만들면 같은 검색 결과.
+2. 지표 하나로 찾은 대목이 모두 그 지표의 `sources` 논문에서 옴. `sources`가 빈 지표는 대목 없음.
+3. `papers.py check`: 지표 목록의 모든 `sources` key가 논문 목록에 있고 원문 파일이 있음.
+
+**M11 보고서 (RP-1, RP-4, RP-7–RP-9)**
+1. 가짜 글 쓰기(`fake_writer.py`, 정해진 글을 돌려줌) → 보고서 `done`, 입력 파일(sha256이 행과 같음), 글 파일, run·인용 행. 글의 자리 표시가 값과 단위로 바뀜. `view=basic` 조회는 요약 부분과 `basic` 값만 줌.
+2. RP-8의 검사를 어기는 글마다 → 한 번 다시 시도, 또 어기면 `failed`, 행과 파일 없음.
+3. 걷기가 없는 기간 → `skipped`(`no_walking`). 풀리지 않은 run이 있으면 미뤄짐.
+4. 지난 30일에 충분한 날이 7일 이상이면 `baseline`이 붙고, 아니면 없음. 하루보다 짧은 기간은 `baseline_comparable = false`(RP-4).
+5. 앱 API: 정상, 남의 착용자(404), 잘못된 기간(422). 같은 기간을 두 번 요청하면 보고서 둘이 남음.
+6. 진짜 글 쓰는 모델로 합성 보행 하루치 보고서 하나를 만들어 사람이 읽고 확인(수치, 인용, 주의 문구).
+
+**순서.**
+
+| 순서 | 저장소 | 일 | 막히는 것 |
+|---|---|---|---|
+| 11 | 서버 | **M7** 지표 목록(MC-8의 33개), `pipeline/metrics.py`, 계약 시험 | — |
+| 12 | gaitfusion | `summary.formats`, 지표 목록 복사와 자기 출력 검사. service.md·gait-features.md가 지표 목록을 가리키게 고침 | M7 |
+| 13 | 서버 | **M8** 특징 풀기, 지난 run 채우기 | M7 |
+| 14 | 서버 | **M9** 기간 계산, 일별 값, 추세 조회 | M8 |
+| 15 | 서버 | **M10** 논문 저장소와 도구. 논문 원문 모으기(사람) | 대목을 수치로 바꾸는 모델 고르기 |
+| 16 | 서버 | **M11** 보고서 쓰기와 앱 API | M9, M10, 글 쓰는 모델 고르기 |
+| 따로 | gaitfusion | 회전·창·삽화·보폭의 남은 열. 나오는 대로 서버는 고칠 것 없이 받아 두고, 풀이에 쓸 때 지표 목록에 항목을 더함 | 서버 순서와 무관 |
+
+지금 시험할 수 있는 것은 합성 데이터와 gaitfusion이 이미 내는 보폭 12열까지입니다. 회전·창·삽화는 gaitfusion이 내기 시작하면 받아 두었다가 지표 목록에 더하고, 실제 보드 데이터가 들어오면 같은 시험에 그 데이터를 더합니다.
 
 ## 15. 정할 것과 확인할 것
 
@@ -1490,6 +1714,10 @@ GRANT SELECT ON ALL TABLES IN SCHEMA summary TO api_rw;
 5. 30일 삭제를 켜는 때(AR-7의 조건을 언제 확인할지).
 6. 보관한 범위 안의 빈자리를 늦은 묶음이 메운 경우(예: 해독기를 고친 뒤 IN-10으로 다시 넣은 묶음). `archive.range`는 seq 구간이고 겹침을 막으므로(AR-3) 그 묶음을 보관 파일에 넣을 길이 없습니다. 지금은 AR-6의 `archive_incomplete` 조건으로 그 구간의 raw를 지우지 않고 남깁니다. 정할 것: 보충 범위를 허용할지(겹침 규칙을 바꿈), 아니면 지금처럼 raw를 남길지.
 7. ~~gaitfusion의 `status: "partial"` 응답. gaitfusion은 자기 마감 시각(540초) 안에 못 끝낸 발의 궤적을 빼고 `result.status = "partial"`로 답합니다(걷기 구간 목록은 그대로). 1단계 서버는 이 필드를 보지 않으므로(7.2절 표에 없음) 궤적이 빠진 run이 `done`이고 "현재"가 됩니다. 걷기 원본은 걷기 구간 시각으로 보관하므로 잃지 않습니다. 정할 것: 이 표시를 run에 저장해 앱에 보일지, 나중에 자동으로 다시 분석할지(gaitfusion은 같은 요청의 답을 15분 동안 다시 쓰므로 그 뒤에), 아니면 지금처럼 둘지.~~ 정함(2026-11-10): run에 저장해 앱에 보이고, 자동으로 다시 분석하지 않습니다. `analysis.run.result_status`(`008`), 7.2절 표의 `status`, AN-7, 8절. `partial` run도 `done`이고 현재 run이 됩니다. 다시 분석하려면 재분석 요청(AN-9)을 씁니다.
+8. ~~(2단계) 글 쓰는 모델과 그 자리.~~ 정함(2026-11-11): 바깥 API를 씁니다. 착용자 코드와 지표 값이 바깥으로 나가는 것은 문제 삼지 않습니다(RP-8). 어느 모델인지는 M11을 시작할 때 고릅니다.
+9. ~~(2단계) 논문 대목의 검색 색인.~~ 정함(2026-11-11): 논문은 수백 편 이하이므로 파일로 된 색인을 프로세스 안에서 읽습니다(RP-5). 대목을 수치로 바꾸는 모델은 M10을 시작할 때 고릅니다.
+10. (2단계) 논문 원문을 저장하고 대목을 보고서에 옮겨 적어도 되는 범위. 논문을 모은 뒤 정하고 논문마다 `papers.toml`에 적습니다.
+11. ~~(2단계) 추세와 지난 기간 견주기.~~ 정함(2026-11-11): 앱에 추세를 보일 수 있게 일별 값을 2단계에서 만들고(14.6절), 보고서는 지난 30일과 견준 값을 함께 냅니다(RP-4).
 
 확인할 것(구현 중):
 1. 권장 VM 디스크의 `fdatasync` 시간(9절). 20 ms를 넘으면 디스크 종류를 바꿉니다.
