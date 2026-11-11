@@ -28,8 +28,9 @@ COPY pyproject.toml uv.lock .python-version ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
-# 2. 코드 층. migrate는 /app/migrations를 찾습니다(pipeline/migrate.py).
+# 2. 코드 층. migrate는 /app/migrations를, 지표 목록은 /app/contracts를 찾습니다(pipeline/migrate.py, pipeline/metrics.py).
 COPY migrations ./migrations
+COPY contracts ./contracts
 COPY src ./src
 COPY tools ./tools
 RUN python -m compileall -q src tools

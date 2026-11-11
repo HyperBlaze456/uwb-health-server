@@ -1,4 +1,4 @@
-# 이미지에는 pyproject.toml, uv.lock, .python-version, migrations/, src/, tools/만 들어갑니다(Dockerfile).
+# 이미지에는 pyproject.toml, uv.lock, .python-version, migrations/, contracts/, src/, tools/만 들어갑니다(Dockerfile).
 .git
 .gitignore
 .venv

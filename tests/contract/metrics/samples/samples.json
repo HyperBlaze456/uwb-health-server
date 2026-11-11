@@ -1,0 +1,20 @@
+{
+  "real_result.json": {
+    "made_by": "tests/contract/metrics/samples/make_samples.py",
+    "gaitfusion_commit": "80100705dc06066b481c45d0b5e8387cbf67853e",
+    "input": "tests/e2e/data/walk_two_feet.c1.gz",
+    "input_sha256": "3a471a0fb51730ed1db2eae850085d6be945b350662cbb48a186456911b249c1",
+    "context": {
+      "sides": "both",
+      "origin_head_us": 81234567890,
+      "params": {}
+    },
+    "trimmed": false
+  },
+  "fake_result.json": {
+    "made_by": "tests/contract/metrics/samples/make_samples.py --fake",
+    "service": "tools/fake_gaitfusion.py (mode ok)",
+    "input": "tests/e2e/data/walk_two_feet.c1.gz",
+    "input_sha256": "3a471a0fb51730ed1db2eae850085d6be945b350662cbb48a186456911b249c1"
+  }
+}

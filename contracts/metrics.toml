@@ -1,0 +1,643 @@
+# C4 지표 목록 (SPEC 14.4 MC). 분석 값의 이름·단위·뜻의 기준입니다.
+#
+# 읽는 코드: src/uwbserver/pipeline/metrics.py. 검사: tests/contract/metrics/ (MC-7).
+# 근거 문헌과 고른 이유는 ../gaitfusion/gait-features.md가 설명하고, 이름·단위·뜻이 다르면 이 파일이 이깁니다.
+# sources의 key는 gait-features.md "출처"의 논문을 <첫 저자 성 소문자><연도>로 적은 것입니다(논문 저장소의 key, RP-5).
+#
+# 고치는 법(MC-4):
+# - gaitfusion이 새 필드를 내기 시작함 → [[metric]] 항목을 더함.
+# - 필드 이름이 바뀜 → 그 지표에 names = { "<형식>" = { name = "<새 이름>" } }.
+# - 판이 오름(/2) → 그 [[table]]의 formats에 판을 더하고, 달라진 지표에 names(이름, scale).
+# - 한번 쓴 id는 다른 뜻으로 다시 쓰지 않습니다.
+#
+# trust(MC-1): validated = 문헌이 같은 부위·방법으로 검증 · proxy = 대리 지표 · low = 소규모 연구 ·
+# unverified = 우리 센서 위치(발목 외측 + UWB)에서 검증 없음. gait-features.md 0절 5번대로 자유 생활 검증은 거의 허리
+# 센서이므로, 발목 센서로 검증된 것(SV95C)만 validated로 두었습니다.
+
+version = 1
+
+# --- 표: 응답 bouts[] 안의 배열 하나 = 줄의 종류 하나 (MC-3) ---------------------------------
+
+[[table]]
+field = "strides"
+level = "stride"
+formats = ["gaitfusion.stride/1"]
+keys = { start = "start_s", end = "end_s", side = "side" }
+
+[[table]]
+field = "steps"
+level = "step"
+formats = ["gaitfusion.step/1"]
+keys = { start = "start_s", end = "end_s", side = "side" }
+
+[[table]]
+field = "turns"
+level = "turn"
+formats = ["gaitfusion.turn/1"]
+keys = { start = "start_s", end = "end_s", side = "side" }
+
+[[table]]
+field = "windows"
+level = "window"
+formats = ["gaitfusion.window/1"]
+keys = { start = "start_s", end = "end_s", side = "side" }
+
+[[table]]
+field = "events"
+level = "event"
+formats = ["gaitfusion.event/1"]
+keys = { start = "start_s", end = "end_s", side = "side" }
+
+# --- 보폭 줄 (gaitfusion, gaitfusion.stride/1) --------------------------------------------
+# 보폭 한 줄 = 한 발의 연속한 두 정지의 가운데 사이(MC-6). gaitfusion service.md 4절, gait-features.md 3절.
+
+[[metric]]
+id = "stride.duration_s"
+level = "stride"
+type = "number"
+unit = "s"
+range = [0.0, 10.0]
+producer = "gaitfusion"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "보폭 시간"
+meaning = "보폭 하나의 시간. 보폭은 한 발의 연속한 두 정지의 가운데 사이(한 발의 걸음 주기 하나)"
+sources = []
+
+[[metric]]
+id = "stride.length_m"
+level = "stride"
+type = "number"
+unit = "m"
+range = [0.0, 3.0]
+producer = "gaitfusion"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "보폭 길이"
+meaning = "한 발이 한 번 정지한 곳에서 다음에 정지한 곳까지의 수평 거리"
+sources = ["schlachetzki2017", "dias2023"]
+
+[[metric]]
+id = "stride.speed_mps"
+level = "stride"
+type = "number"
+unit = "m/s"
+range = [0.0, 3.0]
+producer = "gaitfusion"
+show = "detail"
+needs = "one_foot"
+trust = "validated"
+label = "보폭 속도"
+meaning = "보폭 길이를 보폭 시간으로 나눈 속도"
+sources = ["schlachetzki2017", "ema2023"]
+
+[[metric]]
+id = "stride.clearance_m"
+level = "stride"
+type = "number"
+unit = "m"
+range = [0.0, 1.0]
+producer = "gaitfusion"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "발 들림 높이"
+meaning = "보폭 동안 발목 센서의 가장 높은 높이에서 보폭을 시작할 때의 높이를 뺀 값"
+sources = ["schlachetzki2017", "ogata2022"]
+
+[[metric]]
+id = "stride.heading_deg"
+level = "stride"
+type = "number"
+unit = "deg"
+range = [-180.0, 180.0]
+producer = "gaitfusion"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "진행 방향"
+meaning = "보폭의 시작점에서 끝점으로 향하는 방향을 방 좌표계의 x축에서 반시계 방향으로 잰 각도(−180–180도)"
+sources = []
+
+[[metric]]
+id = "stride.swing_s"
+level = "stride"
+type = "number"
+unit = "s"
+range = [0.0, 10.0]
+producer = "gaitfusion"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "발이 뜬 시간"
+meaning = "보폭 안에서 발이 정지 상태가 아니었던(땅에서 떠서 움직인) 시간"
+sources = ["schlachetzki2017", "shah2020"]
+
+[[metric]]
+id = "stride.stance_s"
+level = "stride"
+type = "number"
+unit = "s"
+range = [0.0, 10.0]
+producer = "gaitfusion"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "발이 닿은 시간"
+meaning = "보폭 시간에서 발이 뜬 시간을 뺀 시간(발이 땅에 닿아 정지해 있던 시간)"
+sources = ["schlachetzki2017"]
+
+[[metric]]
+id = "stride.stance_ratio"
+level = "stride"
+type = "number"
+unit = "ratio"
+range = [0.0, 1.0]
+producer = "gaitfusion"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "발이 닿은 비율"
+meaning = "발이 닿은 시간을 보폭 시간으로 나눈 비율"
+sources = ["schlachetzki2017"]
+
+[[metric]]
+id = "stride.uwb_support"
+level = "stride"
+type = "number"
+unit = "ratio"
+range = [0.0, 1.0]
+producer = "gaitfusion"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "UWB 거리 반영 비율"
+meaning = "보폭 동안 위치 계산에 받아들인 UWB 거리 측정의 비율. IMU만으로 계산한 보폭은 값 없음(null)"
+sources = []
+
+# --- 기간 지표 (서버, period_values가 RP-3의 rule로 계산) -------------------------------------
+# 줄의 값에서 계산하는 지표는 길이 10초 이상 걷기 구간만, 변동(cv, sd)은 30초 이상(RP-3).
+# by_side = false이고 줄의 값을 쓰면 걷기 구간마다 주 발의 줄만 씀(RP-3).
+
+# 자료 범위
+
+[[metric]]
+id = "period.wear_time_s"
+level = "period"
+type = "number"
+unit = "s"
+range = [0.0, inf]
+producer = "server"
+show = "basic"
+needs = "one_foot"
+trust = "unverified"
+label = "자료가 있던 시간"
+meaning = "기간 안에서 그 착용자의 센서 자료가 있던 시간의 합(기간과 겹치는 구간 길이의 합, 기간 안쪽만)"
+sources = ["buekers2025"]
+rule = "given"
+by_side = false
+min_n = 1
+
+[[metric]]
+id = "period.fused_ratio"
+level = "period"
+type = "number"
+unit = "ratio"
+range = [0.0, 1.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "UWB 융합 비율"
+meaning = "걷기 시간 가운데 UWB 거리와 IMU를 함께 써서(융합) 계산한 걷기 구간이 차지하는 비율"
+sources = []
+from = "bout.duration_s"
+rule = "ratio"
+where = { mode = "fused" }
+by_side = false
+min_n = 1
+
+# 활동량
+
+[[metric]]
+id = "period.walking_time_s"
+level = "period"
+type = "number"
+unit = "s"
+range = [0.0, inf]
+producer = "server"
+show = "basic"
+needs = "one_foot"
+trust = "unverified"
+label = "걷기 시간"
+meaning = "기간에 시작한 걷기 구간들의 길이의 합"
+sources = ["yarnall2026"]
+from = "bout.duration_s"
+rule = "sum"
+by_side = false
+min_n = 1
+
+[[metric]]
+id = "period.bout_count"
+level = "period"
+type = "integer"
+unit = "count"
+range = [0.0, inf]
+producer = "server"
+show = "basic"
+needs = "one_foot"
+trust = "unverified"
+label = "걷기 횟수"
+meaning = "기간에 시작한 걷기 구간의 수. 걷기 구간은 멈춤이 3초보다 짧게 이어진 걸음들 가운데 한 발이 4보폭 이상인 것"
+sources = ["yarnall2026", "deldin2019"]
+from = "bout.duration_s"
+rule = "count"
+by_side = false
+min_n = 1
+
+[[metric]]
+id = "period.bout_duration_max_s"
+level = "period"
+type = "number"
+unit = "s"
+range = [0.0, inf]
+producer = "server"
+show = "basic"
+needs = "one_foot"
+trust = "unverified"
+label = "가장 긴 걷기"
+meaning = "기간에 시작한 걷기 구간 가운데 가장 긴 것의 길이"
+sources = ["deldin2019"]
+from = "bout.duration_s"
+rule = "max"
+by_side = false
+min_n = 1
+
+[[metric]]
+id = "period.stride_count"
+level = "period"
+type = "integer"
+unit = "count"
+range = [0.0, inf]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "보폭 수"
+meaning = "길이 10초 이상인 걷기 구간에서 그 발이 낸 보폭의 수"
+sources = ["yarnall2026"]
+from = "stride.duration_s"
+rule = "count"
+where = { bout_min_s = 10 }
+by_side = true
+min_n = 1
+
+[[metric]]
+id = "period.distance_m"
+level = "period"
+type = "number"
+unit = "m"
+range = [0.0, inf]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "걸은 거리"
+meaning = "길이 10초 이상인 걷기 구간마다 주 발의 보폭 길이를 더한 거리"
+sources = []
+from = "stride.length_m"
+rule = "sum"
+where = { bout_min_s = 10 }
+by_side = false
+min_n = 1
+
+[[metric]]
+id = "period.bout_duration_median_s"
+level = "period"
+type = "number"
+unit = "s"
+range = [0.0, inf]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "걷기 길이(중앙값)"
+meaning = "기간에 시작한 걷기 구간들의 길이의 중앙값"
+sources = ["deldin2019", "yarnall2026"]
+from = "bout.duration_s"
+rule = "median"
+by_side = false
+min_n = 5
+
+[[metric]]
+id = "period.bout_duration_p90_s"
+level = "period"
+type = "number"
+unit = "s"
+range = [0.0, inf]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "걷기 길이(90백분위)"
+meaning = "기간에 시작한 걷기 구간들의 길이의 90백분위"
+sources = ["deldin2019", "yarnall2026"]
+from = "bout.duration_s"
+rule = "p90"
+by_side = false
+min_n = 5
+
+[[metric]]
+id = "period.walking_share_over_60s"
+level = "period"
+type = "number"
+unit = "ratio"
+range = [0.0, 1.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "60초 이상 걷기의 비율"
+meaning = "걷기 시간 가운데 길이 60초 이상인 걷기 구간이 차지하는 비율"
+sources = ["deldin2019"]
+from = "bout.duration_s"
+rule = "ratio"
+where = { bout_min_s = 60 }
+by_side = false
+min_n = 1
+
+# 속도
+
+[[metric]]
+id = "period.speed_median_mps"
+level = "period"
+type = "number"
+unit = "m/s"
+range = [0.0, 3.0]
+producer = "server"
+show = "basic"
+needs = "one_foot"
+trust = "unverified"
+label = "걷기 속도"
+meaning = "길이 10초 이상인 걷기 구간에서 주 발의 보폭 속도들의 중앙값"
+sources = ["schlachetzki2017", "yarnall2026", "takayanagi2019"]
+from = "stride.speed_mps"
+rule = "median"
+where = { bout_min_s = 10 }
+by_side = false
+min_n = 30
+
+[[metric]]
+id = "period.speed_p95_mps"
+level = "period"
+type = "number"
+unit = "m/s"
+range = [0.0, 3.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "validated"
+label = "빠른 걷기 속도(95백분위)"
+meaning = "길이 10초 이상인 걷기 구간에서 주 발의 보폭 속도들의 95백분위"
+sources = ["ema2023"]
+from = "stride.speed_mps"
+rule = "p95"
+where = { bout_min_s = 10 }
+by_side = false
+min_n = 100
+
+[[metric]]
+id = "period.speed_10_30s_median_mps"
+level = "period"
+type = "number"
+unit = "m/s"
+range = [0.0, 3.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "걷기 속도(10–30초 걷기)"
+meaning = "길이 10초 이상 30초 미만인 걷기 구간에서 주 발의 보폭 속도들의 중앙값"
+sources = ["deldin2016", "yarnall2026"]
+from = "stride.speed_mps"
+rule = "median"
+where = { bout_min_s = 10, bout_max_s = 30 }
+by_side = false
+min_n = 30
+
+[[metric]]
+id = "period.speed_30_60s_median_mps"
+level = "period"
+type = "number"
+unit = "m/s"
+range = [0.0, 3.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "걷기 속도(30–60초 걷기)"
+meaning = "길이 30초 이상 60초 미만인 걷기 구간에서 주 발의 보폭 속도들의 중앙값"
+sources = ["deldin2016", "yarnall2026", "eckert2026"]
+from = "stride.speed_mps"
+rule = "median"
+where = { bout_min_s = 30, bout_max_s = 60 }
+by_side = false
+min_n = 30
+
+[[metric]]
+id = "period.speed_over_60s_median_mps"
+level = "period"
+type = "number"
+unit = "m/s"
+range = [0.0, 3.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "걷기 속도(60초 이상 걷기)"
+meaning = "길이 60초 이상인 걷기 구간에서 주 발의 보폭 속도들의 중앙값"
+sources = ["deldin2016", "yarnall2026"]
+from = "stride.speed_mps"
+rule = "median"
+where = { bout_min_s = 60 }
+by_side = false
+min_n = 30
+
+# 보폭
+
+[[metric]]
+id = "period.stride_length_median_m"
+level = "period"
+type = "number"
+unit = "m"
+range = [0.0, 3.0]
+producer = "server"
+show = "basic"
+needs = "one_foot"
+trust = "unverified"
+label = "보폭 길이"
+meaning = "길이 10초 이상인 걷기 구간에서 그 발의 보폭 길이들의 중앙값"
+sources = ["schlachetzki2017", "dias2023"]
+from = "stride.length_m"
+rule = "median"
+where = { bout_min_s = 10 }
+by_side = true
+min_n = 30
+
+[[metric]]
+id = "period.cadence_median_spm"
+level = "period"
+type = "number"
+unit = "steps/min"
+range = [0.0, 1200.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "분당 걸음 수"
+meaning = "길이 10초 이상인 걷기 구간에서 주 발의 보폭마다 120 ÷ 보폭 시간(분당 걸음 수)을 내고 그 중앙값"
+sources = ["yarnall2026"]
+from = "stride.duration_s"
+rule = "cadence"
+where = { bout_min_s = 10 }
+by_side = false
+min_n = 30
+
+[[metric]]
+id = "period.stride_time_median_s"
+level = "period"
+type = "number"
+unit = "s"
+range = [0.0, 10.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "보폭 시간"
+meaning = "길이 10초 이상인 걷기 구간에서 그 발의 보폭 시간들의 중앙값"
+sources = []
+from = "stride.duration_s"
+rule = "median"
+where = { bout_min_s = 10 }
+by_side = true
+min_n = 30
+
+# 변동 (30초 이상 걷기 구간)
+
+[[metric]]
+id = "period.stride_time_cv"
+level = "period"
+type = "number"
+unit = "ratio"
+range = [0.0, 1.0]
+producer = "server"
+show = "basic"
+needs = "one_foot"
+trust = "unverified"
+label = "보폭 시간 변동"
+meaning = "길이 30초 이상인 걷기 구간마다 그 발의 보폭 시간의 변동 계수(표준편차 ÷ 평균)를 내고, 그 값들의 중앙값"
+sources = ["hausdorff2001", "shah2020"]
+from = "stride.duration_s"
+rule = "cv"
+where = { bout_min_s = 30 }
+by_side = true
+min_n = 3
+
+[[metric]]
+id = "period.stride_time_sd_s"
+level = "period"
+type = "number"
+unit = "s"
+range = [0.0, 10.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "보폭 시간 표준편차"
+meaning = "길이 30초 이상인 걷기 구간마다 그 발의 보폭 시간의 표준편차를 내고, 그 값들의 중앙값"
+sources = ["hausdorff2001"]
+from = "stride.duration_s"
+rule = "sd"
+where = { bout_min_s = 30 }
+by_side = true
+min_n = 3
+
+[[metric]]
+id = "period.swing_time_cv"
+level = "period"
+type = "number"
+unit = "ratio"
+range = [0.0, 1.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "발이 뜬 시간 변동"
+meaning = "길이 30초 이상인 걷기 구간마다 그 발의 발이 뜬 시간의 변동 계수(표준편차 ÷ 평균)를 내고, 그 값들의 중앙값"
+sources = ["shah2020"]
+from = "stride.swing_s"
+rule = "cv"
+where = { bout_min_s = 30 }
+by_side = true
+min_n = 3
+
+[[metric]]
+id = "period.stride_length_cv"
+level = "period"
+type = "number"
+unit = "ratio"
+range = [0.0, 1.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "보폭 길이 변동"
+meaning = "길이 30초 이상인 걷기 구간마다 그 발의 보폭 길이의 변동 계수(표준편차 ÷ 평균)를 내고, 그 값들의 중앙값"
+sources = ["shah2020"]
+from = "stride.length_m"
+rule = "cv"
+where = { bout_min_s = 30 }
+by_side = true
+min_n = 3
+
+# 발 움직임
+
+[[metric]]
+id = "period.clearance_median_m"
+level = "period"
+type = "number"
+unit = "m"
+range = [0.0, 1.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "발 들림 높이"
+meaning = "길이 10초 이상인 걷기 구간에서 그 발의 발 들림 높이들의 중앙값"
+sources = ["schlachetzki2017", "ogata2022"]
+from = "stride.clearance_m"
+rule = "median"
+where = { bout_min_s = 10 }
+by_side = true
+min_n = 30
+
+[[metric]]
+id = "period.stance_ratio_median"
+level = "period"
+type = "number"
+unit = "ratio"
+range = [0.0, 1.0]
+producer = "server"
+show = "detail"
+needs = "one_foot"
+trust = "unverified"
+label = "발이 닿은 비율"
+meaning = "길이 10초 이상인 걷기 구간에서 그 발의 발이 닿은 비율들의 중앙값"
+sources = ["schlachetzki2017"]
+from = "stride.stance_ratio"
+rule = "median"
+where = { bout_min_s = 10 }
+by_side = true
+min_n = 30

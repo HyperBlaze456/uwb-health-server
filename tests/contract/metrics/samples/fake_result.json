@@ -1,0 +1,41 @@
+{
+ "c2_version": 1,
+ "gaitfusion_version": "fake-1.0",
+ "status": "complete",
+ "summary": {
+  "n_imu": 59000,
+  "n_range": 28026,
+  "seq_gaps": 0,
+  "sides": [
+   "left",
+   "right"
+  ],
+  "sensor_site": "lateral_ankle"
+ },
+ "bouts": [
+  {
+   "start_s": 0.0,
+   "end_s": 296.0,
+   "mode": "fused",
+   "sides": "both",
+   "quality": {
+    "uwb_accept_ratio": 1.0
+   },
+   "trajectories": [
+    {
+     "side": "left",
+     "part": "traj-0-left"
+    },
+    {
+     "side": "right",
+     "part": "traj-0-right"
+    }
+   ],
+   "strides": [],
+   "turns": [],
+   "steps": [],
+   "windows": [],
+   "events": []
+  }
+ ]
+}
