@@ -16,6 +16,23 @@ def bout_ids(conn: psycopg.Connection, run_id: int) -> dict[int, int]:
     return {r["idx"]: r["id"] for r in rows}
 
 
+def bout_starts_of_segment(conn: psycopg.Connection, run_id: int) -> dict:
+    """FT-8: 그 run의 구간의 장치와, 그 구간의 모든 run(재분석 전의 옛 run 포함)의 걷기 구간 시작 시각의 처음과 끝.
+    걷기 구간이 없으면 first·last가 NULL."""
+    return conn.execute(
+        """
+        SELECT s.device_id, min(b.start_at) AS first, max(b.start_at) AS last
+        FROM analysis.run r
+        JOIN segment.segment s ON s.id = r.segment_id
+        LEFT JOIN analysis.run o ON o.segment_id = r.segment_id
+        LEFT JOIN analysis.bout b ON b.run_id = o.id
+        WHERE r.id = %s
+        GROUP BY s.device_id
+        """,
+        (run_id,),
+    ).fetchone()
+
+
 def delete_records(conn: psycopg.Connection, run_id: int) -> int:
     cur = conn.execute(
         "DELETE FROM feature.record WHERE bout_id IN (SELECT id FROM analysis.bout WHERE run_id = %s)", (run_id,)

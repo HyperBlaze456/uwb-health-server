@@ -1,7 +1,8 @@
 """analysis 단계 실행: `analysis {segment_id}` 작업 하나 → run 하나 또는 0개 (AN-1–AN-10).
 
 순서: 구간 확인 → 입력 고르기 → 문맥 → run 번호 → C2 호출 → 응답 검사 → 파일(임시 이름 → fsync → 이름 바꾸기)
-→ 한 트랜잭션(run·bout·궤적 행, 작업 끝, 다음 작업: archive, done이면 feature) → 커밋 뒤 옛 궤적 삭제.
+→ 한 트랜잭션(run·bout·궤적 행, 작업 끝, 다음 작업: archive, done이면 feature, skipped면 옛 날짜의 summary)
+→ 커밋 뒤 옛 궤적 삭제.
 """
 
 import gzip
@@ -132,6 +133,7 @@ def handle(
         with conn.transaction():
             store.insert_run(conn, run)
             _finish_and_follow(conn, job, run_id, seg)
+            _enqueue_summary_for_earlier_bouts(conn, seg, run_id)
         log.info("analysis_skipped", segment=seg.id, run=run_id, reason=run["skip_reason"])
         return "skipped"
     if reply.status == 400:
@@ -222,6 +224,17 @@ def _store_done(
     )  # fmt: skip
     _drop_old_trajectories(conn, seg.id, run_id)
     return "done"
+
+
+def _enqueue_summary_for_earlier_bouts(conn: psycopg.Connection, seg: SegmentView, run_id: int) -> None:
+    """skipped run도 현재 run이 됨(AN-8)인데 feature를 거치지 않으므로(FT-1) FT-8의 summary 작업도 없음. 그래서 여기서
+    옛 run의 걷기 구간이 시작한 한국 날짜로 summary {장치, 날짜}를 넣어 옛 run의 일별 값을 빼게 함. 옛 걷기 구간이 없으면 없음."""
+    span = store.earlier_bout_starts(conn, seg.id, run_id)
+    if span["first"] is None:
+        return
+    jobs.enqueue_summary(
+        conn, seg.device_id, clock.local_date(span["first"]), clock.local_date(span["last"]), now=clock.now()
+    )
 
 
 def _finish_and_follow(conn: psycopg.Connection, job: Job, run_id: int, seg: SegmentView) -> None:

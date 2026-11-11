@@ -150,6 +150,19 @@ def old_trajectories(conn: psycopg.Connection, segment_id: int, before_run_id: i
     ).fetchall()
 
 
+def earlier_bout_starts(conn: psycopg.Connection, segment_id: int, before_run_id: int) -> dict:
+    """skipped run(재분석)이 현재 run이 될 때: 그 구간의 옛 run들의 걷기 구간 시작 시각의 처음과 끝(SM-1).
+    걷기 구간이 없으면 둘 다 NULL."""
+    return conn.execute(
+        """
+        SELECT min(b.start_at) AS first, max(b.start_at) AS last
+        FROM analysis.run r JOIN analysis.bout b ON b.run_id = r.id
+        WHERE r.segment_id = %s AND r.id < %s
+        """,
+        (segment_id, before_run_id),
+    ).fetchone()
+
+
 def delete_trajectory(conn: psycopg.Connection, bout_id: int, side: str) -> None:
     conn.execute("DELETE FROM analysis.trajectory WHERE bout_id = %s AND side = %s", (bout_id, side))
 

@@ -12,12 +12,13 @@ DB·HTTP를 모르는 순수 코드입니다. 파일은 지표 목록을 읽기�
 - normalize: 저장된 줄 하나 → {지표 id: 값}(FT-4).
 - inspect: 줄 하나에서 틀린 값의 수와 목록에 없는 필드 이름(FT-3).
 - period_values: 고른 걷기 구간과 그 줄 → period 지표마다 값(RP-3). 시스템의 수치 계산은 모두 여기서 함.
+- bouts_from_rows: 걷기 구간과 줄의 DB 행 → period_values의 입력(SM-3, RP-2).
 """
 
 import math
 import re
 import statistics
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -581,4 +582,40 @@ def period_values(catalog: Catalog, bouts: Sequence[BoutData], *, wear_time_s: f
             out.append(_result(m, None, None, 0))
         else:
             out += [_compute(m, level, bouts, side) for side in feet]
+    return out
+
+
+# --- DB 행 → 걷기 구간 (SM-3, RP-2) ------------------------------------------------------
+
+
+def bouts_from_rows(
+    catalog: Catalog,
+    bouts: Iterable[Mapping],
+    records: Iterable[Mapping],
+    formats: Mapping[int, object],
+) -> list[BoutData]:
+    """고른 걷기 구간의 행과 그 줄의 행 → period_values의 입력(FT-4의 풀이를 거친 BoutData).
+
+    일별 값과 보고서가 같은 숫자를 얻도록 둘 다 이것을 씁니다(단계끼리는 import하지 않으므로 여기 둠).
+    - bouts: analysis.bout 행 {id, run_id, start_at, end_at, mode}. 돌려주는 순서도 이 순서.
+    - records: feature.record 행 {bout_id, kind, side, v}. 지표 목록에 [[table]]이 없는 종류는 버림.
+    - formats: run_id → 그 run의 feature.unpack.formats. 없거나 None이면 아직 풀리지 않은 run이므로 그 구간의 줄은 없음
+      (걷기 구간 자체는 횟수·시간에 셈). 형식을 밝히지 않은 표는 formats_of대로 /1.
+    """
+    by_bout: dict[int, dict[str, list[Record]]] = {}
+    for r in records:
+        by_bout.setdefault(r["bout_id"], {}).setdefault(r["kind"], []).append(r)
+    out = []
+    for b in bouts:
+        declared = formats.get(b["run_id"])
+        recs: dict[str, tuple[Record, ...]] = {}
+        if declared is not None:
+            fmts = formats_of({"formats": declared}, catalog)
+            for kind, rows in by_bout.get(b["id"], {}).items():
+                table = catalog.table_by_level(kind)
+                if table is None:
+                    continue
+                fmt = fmts[table.field]
+                recs[kind] = tuple(Record(r["side"], normalize(catalog, kind, fmt, r["v"])) for r in rows)
+        out.append(BoutData((b["end_at"] - b["start_at"]).total_seconds(), b["mode"], recs))
     return out

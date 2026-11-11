@@ -69,7 +69,7 @@ def database() -> Iterator[Settings]:
 
 _TABLES_SQL = """
 SELECT format('%I.%I', schemaname, tablename) AS t FROM pg_tables
-WHERE schemaname IN ('pipeline','registry','intake','segment','analysis','archive','feature')
+WHERE schemaname IN ('pipeline','registry','intake','segment','analysis','archive','feature','summary')
   AND NOT (schemaname = 'pipeline' AND tablename = 'migration')
 """
 

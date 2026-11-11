@@ -15,7 +15,7 @@ def _snapshot(conn) -> list[tuple]:
         """
         SELECT table_schema, table_name, column_name, data_type
         FROM information_schema.columns
-        WHERE table_schema IN ('pipeline','registry','intake','segment','analysis','archive','feature')
+        WHERE table_schema IN ('pipeline','registry','intake','segment','analysis','archive','feature','summary')
         ORDER BY 1, 2, 3
         """
     ).fetchall()
@@ -74,6 +74,13 @@ FORBIDDEN = [
     ("core", "UPDATE feature.unpack SET n_records = 0"),
     ("api", "INSERT INTO feature.unpack (run_id, catalog_version, formats, n_records, n_dropped_records, n_bad_values, unknown_fields, unknown_tables, core_version, unpacked_at) VALUES (1, 1, '{}', 0, 0, 0, '{}', '{}', 'x', now())"),
     ("api", "DELETE FROM feature.record"),
+    ("intake", "DELETE FROM summary.daily_value"),
+    ("intake", "SELECT 1 FROM summary.day"),
+    ("core", "UPDATE summary.daily_value SET value = 0"),
+    ("core", "UPDATE summary.day SET catalog_version = 0"),
+    ("api", "INSERT INTO summary.day (subject_id, date, catalog_version, computed_at) VALUES (1, '2026-10-26', 1, now())"),
+    ("api", "DELETE FROM summary.daily_value"),
+    ("api", "DELETE FROM summary.day"),
 ]
 
 

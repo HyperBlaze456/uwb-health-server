@@ -1,13 +1,16 @@
-"""사람 입력의 규칙 (RG). 순수 계산: 장치 이름, 토큰, 비밀번호."""
+"""사람 입력의 규칙 (RG). 순수 계산: 장치 이름, 토큰, 비밀번호, 착용 기록을 고칠 때 다시 계산할 날짜(SM-1)."""
 
 import base64
 import hashlib
 import re
 import secrets
-from datetime import datetime, timedelta
+from collections.abc import Iterable
+from datetime import date, datetime, timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
+
+from uwbserver.pipeline import clock
 
 _MAC = re.compile(r"^[0-9a-f]{2}([:-]?)[0-9a-f]{2}(\1[0-9a-f]{2}){4}$")
 _hasher = PasswordHasher()  # argon2id (RG-5)
@@ -66,3 +69,13 @@ def verify_password(password_hash: str, password: str) -> bool:
 
 def token_expiry(now: datetime, ttl_days: int) -> datetime:
     return now + timedelta(days=ttl_days)
+
+
+def summary_dates(spans: Iterable[tuple[datetime, datetime | None]], now: datetime) -> tuple[date, date]:
+    """SM-1: 착용 기간들(고치기 전과 후)을 합친 한국 날짜 범위(양 끝 포함). 끝은 기간에 들지 않으므로 그 직전 순간의
+    날짜, 끝이 없으면(착용 중) 지금의 날짜. 시작이 미래여서 끝이 앞서면 시작한 날 하루."""
+    spans = list(spans)
+    first = min(clock.local_date(start) for start, _ in spans)
+    last = max(clock.local_date(end - timedelta(microseconds=1)) if end is not None else clock.local_date(now)
+               for _, end in spans)  # fmt: skip
+    return first, max(first, last)

@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 
-from uwbserver.pipeline import clock, settings, wire
+from uwbserver.pipeline import clock, jobs, settings, wire
 from uwbserver.registry import rules, store
 from uwbserver.registry.access import AdminUser, Conn, CurrentUser, PageParams, check_device, check_subject, not_found
 
@@ -214,12 +214,14 @@ def create_wear(body: WearIn, _: AdminUser, conn: Conn) -> WearOut:
         if store.device_by_id(conn, body.device_id) is None:
             raise HTTPException(422, "unknown device_id")
         wid = store.insert_wear(conn, **body.model_dump())
+        _enqueue_summary(conn, body.device_id, [(body.started_at, body.ended_at)])
         return WearOut(**store.wear(conn, wid))
 
 
 @app_router.patch("/wear/{wear_id}", response_model=WearOut, tags=["wear"])
 def patch_wear(wear_id: int, body: WearPatch, _: AdminUser, conn: Conn) -> WearOut:
-    """시작과 끝만 고침. 착용자나 장치를 바꾸려면 끝내고 새로 만듦(RG-4). 결과 표는 고치지 않음(SG-9)."""
+    """시작과 끝만 고침. 착용자나 장치를 바꾸려면 끝내고 새로 만듦(RG-4). 결과 표는 고치지 않음(SG-9).
+    고치기 전·후 기간의 일별 값은 다시 계산하게 함(SM-1)."""
     _tz(body.started_at)
     _tz(body.ended_at)
     with conn.transaction():
@@ -232,7 +234,15 @@ def patch_wear(wear_id: int, body: WearPatch, _: AdminUser, conn: Conn) -> WearO
         if started is None or (ended is not None and ended <= started):
             raise HTTPException(422, "ended_at must be after started_at")
         store.update_wear_times(conn, wear_id, started, ended)
+        _enqueue_summary(conn, row["device_id"], [(row["started_at"], row["ended_at"]), (started, ended)])
         return WearOut(**store.wear(conn, wear_id))
+
+
+def _enqueue_summary(conn, device_id: str, spans: list) -> None:
+    """SM-1 (AP-5를 바꿈): 착용 기록을 만들거나 고치면, 고치기 전·후 기간을 합친 날짜의 일별 값을 다시 계산하게 함.
+    그 장치를 찬 착용자 전원이 다시 계산되므로 기간을 잃은 착용자와 얻은 착용자가 함께 고쳐짐."""
+    first, last = rules.summary_dates(spans, clock.now())
+    jobs.enqueue_summary(conn, device_id, first, last, now=clock.now())
 
 
 @app_router.get("/subjects/{subject_id}/wear", response_model=list[WearOut], tags=["wear"])

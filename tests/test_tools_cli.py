@@ -24,6 +24,7 @@ TOOLS = [
     "bench",
     "papers",
     "unpack_features",
+    "resummarize",
 ]
 
 

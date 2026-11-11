@@ -6,7 +6,7 @@ SQL의 now()도 쓰지 않습니다. 시험이 시계를 바꿔 끼워 60초 침
 
 import threading
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 
 
 class SystemClock:
@@ -60,3 +60,24 @@ def to_us(at: datetime) -> int:
 
 def from_us(us: int) -> datetime:
     return EPOCH + timedelta(microseconds=us)
+
+
+# --- 한국 날짜 (SM-2) -------------------------------------------------------------------
+# 일별 값의 "하루"는 Asia/Seoul 날짜입니다. 한국은 일광 절약 시간이 없으므로(1988년 이후) UTC+9 고정과 같습니다.
+# 시스템의 시간대 자료(이미지에 없을 수 있음)에 기대지 않으려고 고정 offset으로 둡니다. 날짜를 정하는 곳은 여기 하나입니다.
+SEOUL = timezone(timedelta(hours=9), "Asia/Seoul")
+
+
+def local_date(at: datetime) -> date:
+    """그 순간의 한국 날짜."""
+    return at.astimezone(SEOUL).date()
+
+
+def day_start(d: date) -> datetime:
+    """한국 날짜 d가 시작하는 순간(그날 00:00 KST). 하루는 [day_start(d), day_start(d + 1일))."""
+    return datetime(d.year, d.month, d.day, tzinfo=SEOUL)
+
+
+def today() -> date:
+    """지금의 한국 날짜."""
+    return local_date(now())

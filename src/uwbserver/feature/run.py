@@ -1,7 +1,7 @@
 """feature 단계 실행: `feature {run_id}` 작업 하나 → feature.unpack 행 하나와 그 run의 feature.record 행들 (FT-1–FT-5).
 
 순서: run 확인 → 결과 원문 읽기(sha256 대조) → 지표 목록 → 행 만들기(rules) → 한 트랜잭션(그 run의 옛 행 지우기,
-COPY, 풀기 기록, 작업 끝). 다시 풀어도 같은 행이 나옵니다(FT-5). 이 단계는 feature.*와 자기 작업 행만 쓰므로,
+COPY, 풀기 기록, 작업 끝, summary 작업 넣기 FT-8). 다시 풀어도 같은 행이 나옵니다(FT-5). 이 단계는 feature.*와 자기 작업 행만 쓰므로,
 여기서 실패해도 run·걷기 구간·궤적·원본 보관에는 영향이 없습니다.
 
 실패:
@@ -67,7 +67,7 @@ def handle(conn: psycopg.Connection, job: Job) -> str:
                 },
             )
             jobs.finish(conn, job.id, now=clock.now())
-            # FT-8(다음 일): summary 작업도 이 트랜잭션에서 넣음.
+            _enqueue_summary(conn, run["id"])  # FT-8
     except psycopg.Error as e:
         return _retry(conn, job, f"store_{type(e).__name__}: {e}")
     tx_ms = round((time.perf_counter() - t_tx) * 1000, 1)
@@ -81,6 +81,17 @@ def handle(conn: psycopg.Connection, job: Job) -> str:
         log.warning("feature_unrecognized", **fields)
     log.info("feature_done", **fields)
     return "done"
+
+
+def _enqueue_summary(conn: psycopg.Connection, run_id: int) -> None:
+    """FT-8: 걷기 구간이 시작한 한국 날짜들을 덮는 summary {장치, 처음 날짜, 끝 날짜} 하나. 그 구간의 옛 run의
+    걷기 구간도 합침(재분석이면 옛 run의 값이 그날에서 빠져야 하므로). 걷기 구간이 하나도 없으면 넣지 않음."""
+    span = store.bout_starts_of_segment(conn, run_id)
+    if span is None or span["first"] is None:
+        return
+    jobs.enqueue_summary(
+        conn, span["device_id"], clock.local_date(span["first"]), clock.local_date(span["last"]), now=clock.now()
+    )
 
 
 def _fail(conn: psycopg.Connection, job: Job, error: str) -> str:

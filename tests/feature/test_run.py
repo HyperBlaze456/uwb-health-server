@@ -245,3 +245,52 @@ def test_one_hour_run_unpacks_within_200ms(env, device, capsys):
     print(f"\nM8-6: records={n} tx_ms={line['tx_ms']} handle_ms={total_ms:.1f} parse_ms={line['parse_ms']}")
     assert line["tx_ms"] <= 200, line
 
+
+
+# --- FT-8: 푼 트랜잭션에서 summary 작업 -------------------------------------------------------
+
+
+def _summary_jobs(env) -> list[dict]:
+    return env.q("SELECT device_id, date_from, date_to, state FROM pipeline.job WHERE kind = 'summary' ORDER BY id")
+
+
+def _bout_days(env, run_id: int) -> list:
+    return sorted({clock.local_date(r["start_at"])
+                   for r in env.q("SELECT start_at FROM analysis.bout WHERE run_id = %s", (run_id,))})  # fmt: skip
+
+
+def test_unpack_enqueues_summary_for_the_days_bouts_start(env, device):
+    """FT-8: 그 run의 걷기 구간이 시작한 한국 날짜 범위로 summary {장치, 날짜} 하나."""
+    closed_segment(env, device)
+    core = make_core()
+    run_jobs(env, core, ("analysis",))
+    assert _summary_jobs(env) == []  # 풀기 전에는 없음
+    run_jobs(env, core, ("feature",))
+    days = _bout_days(env, _run(env)["id"])
+    assert days
+    assert _summary_jobs(env) == [
+        {"device_id": device.device.id, "date_from": days[0], "date_to": days[-1], "state": "queued"}
+    ]
+
+
+def test_run_without_bouts_enqueues_no_summary(env, device):
+    closed_segment(env, device)
+    run_jobs(env, patched_core(lambda doc: doc.update(bouts=[])), ("analysis", "feature"))
+    assert _summary_jobs(env) == []
+
+
+def test_reanalysis_also_covers_days_of_earlier_runs(env, device):
+    """FT-8: 재분석이면 옛 run의 걷기 구간이 걸친 날짜도 합침. 새 run에 걷기 구간이 없어도 옛 날짜를 다시 계산하게 함."""
+    seg = closed_segment(env, device)
+    run_jobs(env, make_core(), ("analysis", "feature"))
+    old_days = _bout_days(env, _run(env)["id"])
+    env.q("UPDATE pipeline.job SET state = 'done' WHERE kind = 'summary'")
+    env.clock.advance(60)
+    conn = env.conn("core")
+    with conn.transaction():
+        assert jobs.enqueue_analysis(conn, seg, now=clock.now())
+    run_jobs(env, patched_core(lambda doc: doc.update(bouts=[])), ("analysis", "feature"))
+    assert _bout_days(env, _run(env)["id"]) == []
+    assert _summary_jobs(env)[-1] == {
+        "device_id": device.device.id, "date_from": old_days[0], "date_to": old_days[-1], "state": "queued"
+    }

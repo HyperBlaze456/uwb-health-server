@@ -92,12 +92,15 @@ core: intake.chunk ──▶ segment ──▶ analysis(gaitfusion C2) ──▶
 | **segment** | 구간 열고 닫기, system 블록 → 앵커 배치 | core (5초 루프) | — | `segment.*` |
 | **analysis** | gaitfusion 호출, 응답 저장 | core | `analysis` | `analysis.*`, 결과·궤적 파일 |
 | **archive** | 걷기 원본을 잘라 영구 보관, 30일 지난 원본 삭제 | core | `archive` | `archive.*`, archive 파일 |
+| **feature** (2단계) | 결과 원문의 줄을 낸 그대로 저장(14.5절) | core | `feature` | `feature.*` |
+| **summary** (2단계) | 착용자의 일별 지표 값(14.6절) | core | `summary` | `summary.*` |
+| **report** (2단계) | 기간 보고서와 논문 저장소(14.7절). 지금은 논문 저장소만 있음 | core | `report` | `report.*`, 보고서·논문 파일 |
 | **registry** | 사람이 넣는 것: 장치·착용자·착용·계정 | api | — | `registry.*` |
 | **pipeline** | 공용: DB·파일·작업 큐·읽기 위치·시계·설정·마이그레이션 | 전부 | — | `pipeline.*` |
 
 - **쓰기는 자기 스키마만.** 그 밖에는 `pipeline.job`에 작업을 넣는 것뿐입니다. 예외 하나: archive가 30일 지난 `intake` 행과 raw·rejected 파일을 지웁니다. intake·api는 DB 역할로, core 안의 세 단계는 시험(`tests/test_ownership.py`)으로 지킵니다.
 - **읽기는 SQL로 어느 스키마든** 됩니다.
-- **코드 import는 아래로만**(3.2절). 흐름 단계 넷은 서로 import하지 않습니다.
+- **코드 import는 아래로만**(3.2절). 흐름 단계(intake, segment, analysis, archive, feature, summary, report)는 서로 import하지 않습니다. 둘 이상의 단계가 함께 쓰는 순수 계산(C1 해독, 지표 목록 풀이, 기간 계산)은 `pipeline/`에 둡니다.
 
 ## 3. 저장소와 코드 구조
 
@@ -116,18 +119,24 @@ uwb-health-server/
   migrations/   001_pipeline.sql 002_registry.sql 003_intake.sql 004_segment.sql
                 005_analysis.sql 006_archive.sql 007_roles.sql
                 008_analysis_result_status.sql                         ← 10절 그대로
+                009_feature.sql 010_summary.sql                        ← 14.9절 그대로 (2단계)
+  contracts/    metrics.toml                                           ← C4 지표 목록 (14.4절)
   src/uwbserver/
-    pipeline/   db.py files.py jobs.py clock.py settings.py migrate.py wire.py log.py alert.py
+    pipeline/   db.py files.py jobs.py clock.py settings.py migrate.py wire.py log.py alert.py metrics.py
     registry/   rules.py store.py routes.py access.py
     intake/     rules.py store.py run.py routes.py
     segment/    rules.py store.py run.py routes.py
     analysis/   rules.py store.py run.py routes.py gaitfusion.py
     archive/    rules.py store.py run.py
+    feature/    rules.py store.py run.py routes.py            (2단계)
+    summary/    store.py run.py routes.py                     (2단계)
+    report/     papers.py                                     (2단계, 글 쓰기는 아직)
     process/    intake.py core.py api.py
   tests/        pipeline/ registry/ intake/ segment/ analysis/ archive/
                 contract/wire_vectors/  contract/gaitfusion/  e2e/(data/)  test_ownership.py
   tools/        fake_head.py fake_gaitfusion.py reindex_raw.py verify_archive.py
                 reingest_rejected.py admin.py import_usb.py bench.py
+                unpack_features.py resummarize.py papers.py            (2단계: TL-9, TL-11, TL-10)
   ops/          backup.sh crontab restore.md
 ```
 
@@ -142,6 +151,7 @@ uwb-health-server/
 
 그 밖의 파일:
 - `pipeline/wire.py`: C1 해독기와 검사기(wire.md "서버의 검사"). intake, segment, analysis, api, 도구가 모두 이것 하나를 씁니다. 바깥을 모르는 순수 코드입니다.
+- `pipeline/metrics.py`: C4 지표 목록 읽기와 검사, 저장된 줄의 풀이(`normalize`), 기간의 지표 값 계산(`period_values`). feature, summary, report가 모두 이것 하나를 씁니다. 순수 코드입니다(14.4절, RP-3).
 - `pipeline/`: `db.py`(연결·트랜잭션·잠금), `files.py`(5.2절 파일 형식), `jobs.py`(작업 넣기·가져가기·끝·실패·되살리기, 읽기 위치), `clock.py`(시험에서 바꿔 끼우는 시계), `settings.py`(4.3절), `migrate.py`, `log.py`(PL-5 한 줄 JSON), `alert.py`(OP-2 알림).
 - 모든 DB 연결은 autocommit이고, 쓰기는 늘 `with conn.transaction():` 블록 안에서 합니다. 블록이 끝나야 커밋되므로 받기 응답은 커밋 뒤에 나갑니다.
 - `analysis/gaitfusion.py`: C2 HTTP 클라이언트. `registry/access.py`: 로그인 확인과 권한 검사.
@@ -150,8 +160,8 @@ uwb-health-server/
 **import 규칙.** 아래로만 import하고 CI에서 import-linter로 막습니다. `tools/`는 무엇이든 import할 수 있습니다.
 
 ```
-process ──▶ intake · segment · analysis · archive ──▶ registry ──▶ pipeline
-                    (넷은 서로 import 금지)
+process ──▶ intake · segment · analysis · archive · feature · summary · report ──▶ registry ──▶ pipeline
+                    (흐름 단계끼리는 서로 import 금지)
 ```
 
 ```ini
@@ -163,7 +173,7 @@ name = 아래로만
 type = layers
 layers =
     uwbserver.process
-    uwbserver.intake | uwbserver.segment | uwbserver.analysis | uwbserver.archive
+    uwbserver.intake | uwbserver.segment | uwbserver.analysis | uwbserver.archive | uwbserver.feature | uwbserver.summary | uwbserver.report
     uwbserver.registry
     uwbserver.pipeline
 
@@ -220,7 +230,7 @@ volumes: {certs: {}, pgdata: {}}
 | 역할 | 할 수 있는 것 |
 |---|---|
 | `intake_rw` | `registry.device` 읽기, `intake.*` 읽기·INSERT, `archive.purged` 읽기(재색인이 삭제한 파일을 건너뜀). 커밋은 디스크를 기다리지 않음(`synchronous_commit = off`) |
-| `core_rw` | 전부 읽기. `segment.*` INSERT·UPDATE, `analysis.*` INSERT(궤적 행만 DELETE), `archive.*` INSERT, `pipeline.job` INSERT·UPDATE·DELETE, `pipeline.cursor` UPDATE, `intake.chunk`·`health`·`system`·`rejected` DELETE(30일 삭제만) |
+| `core_rw` | 전부 읽기. `segment.*` INSERT·UPDATE, `analysis.*` INSERT(궤적 행만 DELETE), `archive.*` INSERT, `pipeline.job` INSERT·UPDATE·DELETE, `pipeline.cursor` UPDATE, `intake.chunk`·`health`·`system`·`rejected` DELETE(30일 삭제만). 2단계: `feature.*`·`summary.*` INSERT·DELETE(다시 풀기와 다시 계산은 지우고 새로 넣음) |
 | `api_rw` | 전부 읽기. `registry.*` INSERT·UPDATE, `registry.app_token` DELETE, `pipeline.job` INSERT |
 
 아무에게도 없는 권한: `archive.*` UPDATE·DELETE, `intake.*` UPDATE, `intake.survey` DELETE, `analysis.*`(궤적 제외) UPDATE·DELETE, `registry.*`(로그인 토큰 제외) DELETE, `segment.*` DELETE.
@@ -262,6 +272,7 @@ volumes: {certs: {}, pgdata: {}}
 | **임시 원본** | 30일 동안 전체 재분석용 | raw 파일, `intake.chunk`·`health`·`system` | 이어 쓰기·INSERT만 | raw는 10분마다 바깥 복사(원격 35일), 표는 DB 덤프 | 30일 + 삭제 조건(AR-6) |
 | | 거절한 묶음(진단·다시 넣기용) | rejected 파일, `intake.rejected` | 이어 쓰기·INSERT만 | 안 함 | 30일, 조건 없음 |
 | **결과** | 원본에서 다시 계산 가능. 영구 | `segment.*`\*, `analysis.*`(궤적 제외), 결과 원문 파일 | analysis는 INSERT만, segment는 열림·닫힘 UPDATE | DB 덤프. 결과 원문 파일은 안 함(재분석으로 되살림) | 없음. 옛 run도 비교용으로 남김 |
+| | 결과 원문과 줄에서 다시 만들 수 있음 (2단계) | `feature.*`, `summary.*` | 다시 풀기·다시 계산은 그 run·그날의 행을 지우고 새로 넣음 | DB 덤프 | 없음 |
 | **캐시** | 지워도 재분석으로 되살림 | 궤적 파일, `analysis.trajectory` | 새 run이 끝나면 같은 구간의 옛 run 것 삭제 | 안 함 | 옛 run 것은 즉시. 디스크가 모자라면 오래된 것부터 |
 | **작업 기록** | 흐름을 돌리는 데만 씀 | `pipeline.*` | 자유 | DB 덤프에 함께 | `done` 작업은 30일 뒤 |
 
@@ -302,7 +313,7 @@ volumes: {certs: {}, pgdata: {}}
   - 실패(재시도할 것): k번째 실패(k = 1, 2, 3)면 `attempts = k`, `run_after = now + 2^k 분`(2, 4, 8분), `queued`로 돌림. 4번째 실패면 `failed`. 처음 시도까지 모두 네 번 시도합니다.
   - 실패(재시도 안 할 것): 바로 `failed`, `last_error`에 이유.
   - 되살리기: core가 시작할 때와 매 루프마다 `locked_at`이 `GAITFUSION_TIMEOUT_S + 300초`보다 오래된 `running` 작업을 실패 한 번으로 셉니다(위 규칙과 같은 한도).
-  - 같은 대상의 `queued`·`running` 작업은 하나뿐입니다(부분 고유 색인). 넣기는 `ON CONFLICT (…) WHERE … DO NOTHING`입니다. 작업이 끝나며 같은 대상의 다음 작업을 넣을 때는 같은 트랜잭션에서 자기를 먼저 `done`으로 바꾼 뒤 넣습니다.
+  - 같은 대상의 `queued`·`running` 작업은 하나뿐입니다(부분 고유 색인). 예외는 2단계의 `summary`입니다: `queued`만 하나로 묶어, 도는 중에 하나 더 대기할 수 있습니다(SM-1). 그래서 실패하거나 되살린 `summary` 작업을 `queued`로 돌릴 때 같은 대상의 대기 작업이 이미 있으면, 그 작업은 대기 작업이 대신하는 것으로 보고 `done`으로 닫습니다. 넣기는 `ON CONFLICT (…) WHERE … DO NOTHING`입니다. 작업이 끝나며 같은 대상의 다음 작업을 넣을 때는 같은 트랜잭션에서 자기를 먼저 `done`으로 바꾼 뒤 넣습니다.
   - 정리: `core.py`가 매일 `pipeline.jobs.cleanup()`을 불러 30일 지난 `done` 작업을 지웁니다. 원본이 아니므로 `PURGE_ENABLED`와 무관합니다.
 - **PL-3 읽기 위치.** `pipeline.cursor('chunk')`는 segment가 처리한 `intake.chunk.id`의 최댓값입니다. 처리한 행들의 결과와 같은 트랜잭션에서 고칩니다. 이것이 맞으려면 **id 순서 = 커밋 순서**여야 하므로, `intake.chunk`에 INSERT하는 모든 트랜잭션(intake, 재색인, 다시 넣기)은 INSERT 직전에 전역 잠금 `pg_advisory_xact_lock(1)`을 잡고 커밋할 때까지 둡니다. 그러면 segment가 id k를 볼 때 k보다 작은 id는 모두 커밋되었거나 버려진 것입니다.
 - **PL-4 시계.** 현재 시각은 모두 `pipeline/clock.py`에서 얻습니다. 시험은 시계를 바꿔 끼워 60초 침묵, 30일 삭제를 흉내 냅니다.
@@ -443,7 +454,7 @@ volumes: {certs: {}, pgdata: {}}
 - **AP-2 권한.** `member`는 자기 착용자와, 그 착용 기간에 귀속된 구간·걷기 구간만 봅니다. `admin`은 전부입니다. 남의 것을 요청하면 404입니다(있는지 알리지 않음). admin 전용 엔드포인트를 `member`가 부르면 403입니다. 장치는 자기 착용자가 찬 적 있는 것만 보이고, 그 장치의 health·system 블록도 자기 착용 기간 안의 것만 보입니다(같은 장치를 다른 사람이 찬 동안의 기록은 보이지 않음).
 - **AP-3 상태 블록 풀기.** health·system·survey 조회는 `block` 바이트를 `pipeline/wire.py`로 풀어, wire.md "묶음 `.json`의 형식"의 `payload`와 같은 이름·모양의 JSON으로 줍니다(예: system `anchors`는 칸마다 `[x, y, z, range_bias_m]`, 빈 MAC은 `"00:00:00:00:00:00"`). 펌웨어 시험 벡터의 `.json`과 같은 형식이므로 계약 시험이 이것도 확인합니다.
 - **AP-4 궤적 읽기.** TRJ1 파일의 머리를 읽고, 채널마다 시작 위치 `24 + 4n·k`에서 `rate`에 맞게 건너뛰며 읽습니다(25 Hz = 4개마다 1개). 해석이나 압축 해제는 하지 않습니다. 캐시가 지워졌으면 404입니다.
-- **AP-5 쓰기 뒤 작업.** api가 넣는 작업은 재분석(`analysis`) 하나입니다. 착용 기록을 고쳐도 1단계에서는 작업을 넣지 않습니다(귀속은 조회 때 정해지므로).
+- **AP-5 쓰기 뒤 작업.** api가 넣는 작업은 재분석(`analysis`) 하나입니다. 착용 기록을 고쳐도 1단계에서는 작업을 넣지 않습니다(귀속은 조회 때 정해지므로). 2단계에서는 일별 값을 다시 계산하는 `summary` 작업을 넣습니다(SM-1).
 
 ### 6.8 도구 (TL)
 
@@ -1414,8 +1425,9 @@ min_n = 3
 ### 14.6 일별 값과 추세 (SM)
 
 - **SM-1 작업.** `summary {device_id, date_from, date_to}`. feature가 넣고(FT-8), api도 착용 기록을 만들거나 고칠 때 고치기 전·후 기간을 합쳐 넣습니다(1단계의 AP-5가 여기서 바뀜). 그 장치에 겹치는 착용 기록이 있는 착용자 전원을 날짜마다 다시 계산합니다. 같은 대상의 대기 작업은 하나이고, 도는 중에는 하나 더 대기할 수 있습니다(도는 사이 끝난 run을 놓치지 않으려고).
-- **SM-2 하루.** `Asia/Seoul` 날짜입니다. 현재 run의 걷기 구간 중 그 날짜에 시작했고 `analysis.bout_subject`가 그 착용자로 정한 것을 씁니다. 자정을 넘는 걷기 구간은 시작한 날에 넣습니다.
+- **SM-2 하루.** `Asia/Seoul` 날짜입니다. 한국은 일광 절약 시간이 없으므로 코드는 UTC+9 고정값을 한 곳(`pipeline/clock.py`)에 두고 씁니다(이미지에 시간대 자료가 없어도 되게). 현재 run의 걷기 구간 중 그 날짜에 시작했고 `analysis.bout_subject`가 그 착용자로 정한 것을 씁니다. 자정을 넘는 걷기 구간은 시작한 날에 넣습니다.
 - **SM-3 계산과 저장.** 지표 목록의 `period` 항목마다 `metrics.period_values`(14.7절 RP-3의 규칙)로 값을 계산합니다. 한 트랜잭션에서 그 착용자·날짜의 `summary.day`와 `summary.daily_value` 행을 지우고 새로 넣습니다. 값이 있는 지표만 행이 있고, 걷기가 없는 날은 행이 없습니다. 자료가 있던 시간과 걷기 시간도 지표입니다(`period.wear_time_s`, `period.walking_time_s`).
+- **SM-3a 빈틈 없이 다시 계산.** 아직 풀리지 않은 run의 걷기 구간은 줄 없이 횟수와 시간만 셉니다. 그 run이 풀리면 FT-8이 같은 날짜를 다시 넣습니다. 재분석이 `skipped`로 끝나 걷기 구간이 사라진 때에도, analysis가 그 run을 저장하는 트랜잭션에서 앞선 run의 걷기 구간이 걸친 날짜의 `summary` 작업을 넣어 옛 값이 남지 않게 합니다. 착용 기록의 날짜 범위는 끝 시각 바로 앞 순간의 날짜까지이고, 끝이 없는 착용은 오늘까지입니다.
 - **SM-4 지표 목록이 바뀌면.** `tools/resummarize.py [--since 날짜]`(TL-11)이 지난 날짜의 `summary` 작업을 넣습니다. `period` 지표를 더하거나 `names`를 고친 뒤에 씁니다. 표는 그대로입니다.
 - **SM-5 추세 조회.** `summary.daily_value`를 착용자·지표·날짜 범위로 읽을 뿐이고 계산하지 않습니다. 앱은 지표의 이름·단위·믿을 만한 정도를 지표 목록 조회(`GET /v1/metrics`)로 받으므로, 지표가 늘어도 앱을 고치지 않고 보일 수 있습니다.
 - **속도.** 착용자의 하루 계산은 300 ms 이하(그날 걷기 구간의 줄만 읽음), 추세 조회는 지표 5개 × 1년에 20 ms 이하입니다.
@@ -1490,7 +1502,7 @@ min_n = 3
 | 메서드와 경로 | 내용 | 권한 | 폴더 |
 |---|---|---|---|
 | `GET /v1/metrics` | 지표 목록: `id`, `level`, `label`, `unit`, `meaning`, `trust`, `needs`, `show`, 지표 목록의 판. 앱은 `show`로 착용자 화면에 보일 지표를 고름 | 로그인 | summary |
-| `GET /v1/subjects/{id}/trend?metrics=&from=&to=` | 지표마다·발마다 일별 값의 배열 `{metric, side, points: [{date, value, n, sufficient}]}`. `metrics`는 쉼표로 이은 `period.*` id(최대 10개), 날짜 범위는 최대 366일 | 본인, admin | summary |
+| `GET /v1/subjects/{id}/trend?metrics=&from=&to=` | 지표마다·발마다 일별 값의 배열 `{metric, side, points: [{date, value, n, sufficient}]}`. 값이 있는 지표·발만 나옴. `metrics`는 쉼표로 이은 `period.*` id(최대 10개). `to`의 기본은 오늘(한국 날짜), `from`의 기본은 `to` − 365일, 양 끝을 포함해 최대 366일. 모르는 지표·`period`가 아닌 지표·범위 초과는 422 | 본인, admin | summary |
 | `GET /v1/bouts/{id}/records?kind=` | 걷기 구간 하나의 줄(보폭 등): `{bout_id, run_id, kind, unpacked, format, records: [{idx, side, start_at, end_at, values}]}`. `values`는 지표 `id`로 옮긴 것(FT-4). `kind`의 기본은 `stride`, 지표 목록에 없는 종류는 422. 아직 풀지 않은 run이면 `unpacked = false`와 빈 배열 | 본인, admin | feature |
 | `POST /v1/subjects/{id}/reports` | `{from, to}` → 202 `{subject_id, from, to, queued}`(이미 대기 중이면 `queued = false`). 기간은 1분 이상 31일 이하 | 본인, admin | report |
 | `GET /v1/subjects/{id}/reports?from=&to=` | 보고서 목록(id, 기간, 상태, 만든 시각) | 본인, admin | report |
@@ -1673,7 +1685,7 @@ tests/          contract/metrics/  feature/  summary/  report/
 5. 진짜 gaitfusion 전 구간 시험(M3-9)에 이어 그 run의 보폭 줄이 있고 `n_bad_values = 0`, `unknown_fields`가 빔.
 6. 속도: 1시간 구간 run을 푸는 트랜잭션 200 ms 이하.
 
-**M9 기간 계산, 일별 값, 추세 (RP-2, RP-3, SM)**
+**M9 기간 계산, 일별 값, 추세 (RP-2, RP-3, SM)** — 2026-11-11 만듦. 6번은 개발 PC에서 하루 계산 중앙값 88 ms(보폭 줄 9,792개인 날), 추세 조회 중앙값 6.8 ms(지표 5개 × 1년). 속도 시험의 1년치 자료는 한 주만 실제 크기의 보폭 줄이고 나머지 날은 줄였음.
 1. 손으로 답을 아는 합성 보폭 줄 → `period` 지표마다 기대 값. 30초 조건, 길이별 나눔, 발별·양발 지표, `no_data`·`needs_both_feet`.
 2. 기간 경계: 경계에 걸친 걷기 구간이 시작한 쪽에만 들어감. 기간을 둘로 쪼갠 횟수·시간의 합이 통째로 계산한 값과 같음.
 3. run이 끝나면 그날의 일별 값이 생김. 재분석 뒤에는 새 run의 값으로 바뀜. 착용 기록을 고치면 두 착용자의 그 날짜가 다시 계산됨(SM-1).
@@ -1681,7 +1693,7 @@ tests/          contract/metrics/  feature/  summary/  report/
 5. 추세 조회: 정상, 남의 착용자(404), 모르는 지표(422). `GET /v1/metrics`가 지표 목록과 같음.
 6. 속도: 착용자 1년치 합성 데이터에서 하루 계산 300 ms 이하, 추세 조회 20 ms 이하이고 색인을 탐.
 
-**M10 논문 저장소 (RP-5, RP-6)**
+**M10 논문 저장소 (RP-5, RP-6)** — 2026-11-11 저장소·도구·찾기를 만듦. 벡터 함수는 대역뿐이고 진짜 모델과 논문 원문은 아직.
 1. `papers.py add`로 넣은 논문이 목록·원문·대목에 있음. `papers.py build`로 색인을 지우고 다시 만들면 같은 검색 결과.
 2. 지표 하나로 찾은 대목이 모두 그 지표의 `sources` 논문에서 옴. `sources`가 빈 지표는 대목 없음.
 3. `papers.py check`: 지표 목록의 모든 `sources` key가 논문 목록에 있고 원문 파일이 있음.

@@ -1,6 +1,6 @@
 """PL-2 작업 큐, PL-3 읽기 위치."""
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 
@@ -25,6 +25,53 @@ def test_one_queued_per_target(env):
     assert not jobs.enqueue_analysis(c, 7, now=now)  # running도 하나로 셈
     jobs.finish(c, job.id, now=now)
     assert jobs.enqueue_analysis(c, 7, now=now)
+
+
+def test_summary_one_queued_but_another_while_running(env):
+    """SM-1: 같은 대상(장치, 날짜 범위)의 대기 작업은 하나. 도는 중에는 하나 더 대기할 수 있음."""
+    c = _core(env)
+    now = clock.now()
+    d1, d2 = date(2026, 10, 26), date(2026, 10, 27)
+    assert jobs.enqueue_summary(c, "head-a", d1, d2, now=now)
+    assert not jobs.enqueue_summary(c, "head-a", d1, d2, now=now)
+    assert jobs.enqueue_summary(c, "head-a", d1, d1, now=now)  # 다른 범위는 다른 대상
+    assert jobs.enqueue_summary(c, "head-b", d1, d2, now=now)
+    job = jobs.claim(c, ("summary",), worker="w", now=now)
+    assert job is not None and job.kind == "summary"
+    assert (job.device_id, job.date_from, job.date_to) == ("head-a", d1, d2)
+    assert job.segment_id is None and job.run_id is None
+    assert jobs.enqueue_summary(c, "head-a", d1, d2, now=now)  # 도는 중이면 하나 더
+    assert not jobs.enqueue_summary(c, "head-a", d1, d2, now=now)
+
+
+def test_summary_retry_with_queued_twin_is_closed(env):
+    """SM-1의 queued만 고유한 색인: 도는 summary 작업이 실패해 대기로 돌아가려는데 같은 대상이 이미 대기 중이면,
+    고유 색인을 어기지 않고 끝냄(대기 중인 것이 같은 일을 다시 함). 되살리기(revive_stale)도 같은 길."""
+    c = _core(env)
+    now = clock.now()
+    d = date(2026, 10, 26)
+    jobs.enqueue_summary(c, "head-a", d, d, now=now)
+    first = jobs.claim(c, ("summary",), worker="w", now=now)
+    jobs.enqueue_summary(c, "head-a", d, d, now=now)
+    assert jobs.retry_or_fail(c, first, "boom", now=now) == "superseded"
+    row = env.one("SELECT state, last_error FROM pipeline.job WHERE id = %s", (first.id,))
+    assert row["state"] == "done" and "boom" in row["last_error"]
+
+    second = jobs.claim(c, ("summary",), worker="w", now=now)
+    jobs.enqueue_summary(c, "head-a", d, d, now=now)
+    later = now + timedelta(hours=1)
+    assert jobs.revive_stale(c, now=later, stale_after_s=60) == 1
+    assert env.one("SELECT state FROM pipeline.job WHERE id = %s", (second.id,))["state"] == "done"
+    # 쌍둥이가 없으면 보통의 재시도
+    third = jobs.claim(c, ("summary",), worker="w", now=later)
+    assert jobs.retry_or_fail(c, third, "boom", now=later) == "queued"
+
+
+def test_api_may_enqueue_summary(env):
+    """4.2: api_rw는 pipeline.job INSERT(착용 기록을 고칠 때 SM-1)."""
+    c = env.conn("api")
+    with c.transaction():
+        assert jobs.enqueue_summary(c, "head-a", date(2026, 10, 26), date(2026, 10, 26), now=clock.now())
 
 
 def test_backoff_then_failed(env):

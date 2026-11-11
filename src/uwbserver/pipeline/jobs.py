@@ -5,12 +5,12 @@
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 import psycopg
 
-Kind = Literal["analysis", "archive", "feature"]
+Kind = Literal["analysis", "archive", "feature", "summary"]
 
 MAX_RETRIES = 3  # 처음 시도까지 모두 네 번
 DONE_KEEP_DAYS = 30
@@ -22,6 +22,9 @@ class Job:
     kind: Kind
     segment_id: int | None
     run_id: int | None
+    device_id: str | None  # summary 대상: 장치와 한국 날짜 범위(양 끝 포함)
+    date_from: date | None
+    date_to: date | None
     state: str
     attempts: int
     last_error: str | None
@@ -35,7 +38,7 @@ class Job:
         return cls(**{k: row[k] for k in cls.__slots__})
 
 
-_COLS = "id, kind, segment_id, run_id, state, attempts, last_error, run_after, created_at, locked_by, locked_at"
+_COLS = "id, kind, segment_id, run_id, device_id, date_from, date_to, state, attempts, last_error, run_after, created_at, locked_by, locked_at"
 
 
 def enqueue_analysis(conn: psycopg.Connection, segment_id: int, *, now: datetime) -> bool:
@@ -76,6 +79,23 @@ def enqueue_feature(conn: psycopg.Connection, run_id: int, *, now: datetime) -> 
     return cur.rowcount == 1
 
 
+def enqueue_summary(conn: psycopg.Connection, device_id: str, date_from: date, date_to: date, *, now: datetime) -> bool:
+    """summary {device_id, date_from, date_to} (SM-1, FT-8). 날짜는 한국 날짜, 양 끝 포함.
+
+    같은 대상의 대기(queued) 작업이 있으면 넣지 않고 False. 실행 중인 것은 세지 않으므로 도는 동안 하나 더 대기할 수
+    있음: 도는 사이에 끝난 run이나 고친 착용 기록을 놓치지 않으려고(SM-1).
+    """
+    cur = conn.execute(
+        """
+        INSERT INTO pipeline.job (kind, device_id, date_from, date_to, run_after, created_at)
+        VALUES ('summary', %s, %s, %s, %s, %s)
+        ON CONFLICT (device_id, date_from, date_to) WHERE kind = 'summary' AND state = 'queued' DO NOTHING
+        """,
+        (device_id, date_from, date_to, now, now),
+    )
+    return cur.rowcount == 1
+
+
 def claim(conn: psycopg.Connection, kinds: tuple[Kind, ...], *, worker: str, now: datetime) -> Job | None:
     """가져가기. 호출한 쪽이 곧바로 커밋해 running이 보이게 합니다."""
     row = conn.execute(
@@ -108,18 +128,29 @@ def fail(conn: psycopg.Connection, job_id: int, error: str, *, now: datetime) ->
 
 
 def retry_or_fail(conn: psycopg.Connection, job: Job, error: str, *, now: datetime) -> str:
-    """재시도할 실패. k번째(1–3)면 2^k분 뒤로, 4번째면 failed. 새 상태를 돌려줍니다."""
+    """재시도할 실패. k번째(1–3)면 2^k분 뒤로, 4번째면 failed. 새 상태를 돌려줍니다.
+
+    summary 작업은 대기(queued)만 고유하므로(SM-1), 같은 대상이 이미 대기 중이면 대기로 돌리지 않고 done으로 끝냄
+    (last_error에 이유). 대기 중인 작업이 같은 일을 처음부터 다시 하므로 잃는 것이 없음. 이때 "superseded".
+    """
     k = job.attempts + 1
     if k <= MAX_RETRIES:
-        conn.execute(
+        cur = conn.execute(
             """
-            UPDATE pipeline.job SET state = 'queued', attempts = %s, run_after = %s, last_error = %s,
-                                    locked_by = NULL, locked_at = NULL
-            WHERE id = %s
+            UPDATE pipeline.job j SET state = 'queued', attempts = %s, run_after = %s, last_error = %s,
+                                      locked_by = NULL, locked_at = NULL
+            WHERE j.id = %s
+              AND NOT (j.kind = 'summary' AND EXISTS (
+                  SELECT 1 FROM pipeline.job q
+                  WHERE q.kind = 'summary' AND q.state = 'queued' AND q.device_id = j.device_id
+                    AND q.date_from = j.date_from AND q.date_to = j.date_to))
             """,
             (k, now + timedelta(minutes=2**k), error[:2000], job.id),
         )
-        return "queued"
+        if cur.rowcount == 1:
+            return "queued"
+        finish(conn, job.id, now=now, note=f"superseded_by_queued: {error}"[:2000])
+        return "superseded"
     conn.execute(
         "UPDATE pipeline.job SET state = 'failed', attempts = %s, finished_at = %s, last_error = %s WHERE id = %s",
         (k, now, error[:2000], job.id),

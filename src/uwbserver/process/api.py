@@ -14,6 +14,7 @@ from uwbserver.intake import routes as intake_routes
 from uwbserver.pipeline import db, log, settings
 from uwbserver.registry import routes as registry_routes
 from uwbserver.segment import routes as segment_routes
+from uwbserver.summary import routes as summary_routes
 
 
 def create_app() -> FastAPI:
@@ -32,7 +33,7 @@ def create_app() -> FastAPI:
         description="SPEC.md 8절. 인증은 Authorization: Bearer <로그인 토큰>. 시각은 UTC ISO 8601.",
         lifespan=lifespan,
     )
-    for r in (registry_routes, intake_routes, segment_routes, analysis_routes, feature_routes):
+    for r in (registry_routes, intake_routes, segment_routes, analysis_routes, feature_routes, summary_routes):
         app.include_router(r.app_router)
 
     @app.get("/healthz", include_in_schema=False)
