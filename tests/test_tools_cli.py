@@ -22,6 +22,7 @@ TOOLS = [
     "admin",
     "import_usb",
     "bench",
+    "papers",
 ]
 
 

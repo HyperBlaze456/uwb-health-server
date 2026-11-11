@@ -400,7 +400,11 @@ class Appender:
 
 def write_atomic(path: str, data: bytes) -> None:
     """임시 이름으로 쓰고 fsync 뒤 이름을 바꿉니다(5.2). 이 함수가 끝난 뒤에야 DB 행을 넣습니다."""
-    p = resolve(path)
+    write_atomic_file(resolve(path), data)
+
+
+def write_atomic_file(p: Path, data: bytes) -> None:
+    """write_atomic과 같은 순서를 실제 경로에 씁니다(논리 경로가 없는 파일용: 논문 저장소, RP-5)."""
     created: list[Path] = []
     _makedirs(p.parent, created)
     tmp = p.with_name(f".{p.name}.tmp-{os.getpid()}")
