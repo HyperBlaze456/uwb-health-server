@@ -1401,11 +1401,12 @@ min_n = 3
 ### 14.5 특징 풀기 (FT)
 
 - **FT-1 작업.** analysis는 run을 `done`으로 저장하는 트랜잭션에서 `feature {run_id}` 작업을 넣습니다(`skipped` run은 넣지 않음). 작업 하나가 `feature.unpack` 행 하나와 그 run의 줄들을 만듭니다. 푸는 일이 실패해도 run, 걷기 구간, 궤적, 원본 보관에는 영향이 없습니다.
-- **FT-2 풀기.** 결과 원문 파일을 읽어 sha256을 run의 값과 대조합니다. `bouts[]`의 순번으로 `analysis.bout`를 찾고, 지표 목록의 `[[table]]`에 있는 배열마다 항목 하나를 `feature.record` 행 하나로 넣습니다. `kind`는 표의 `level`, `idx`는 배열 안 순번, 시각은 MC-2대로 옮기고, `v`는 그 항목 전체입니다. COPY 한 번, 전부 한 트랜잭션입니다.
-- **FT-3 버리는 것은 하나뿐.** 줄의 시작·끝이 유한한 수가 아니거나 끝이 시작보다 앞서거나 발 값이 틀리면 그 줄을 넣지 않고 `n_dropped_records`에 셉니다(행으로 만들 수 없으므로). 그 밖의 값은 형이나 범위가 틀려도 그대로 저장하고, 지표 목록으로 본 수를 `n_bad_values`에, 목록에 없는 필드 이름을 `unknown_fields`에, 목록에 없는 배열 이름을 `unknown_tables`에 적습니다. 셋 중 하나라도 있으면 경고 로그를 남깁니다.
+- **FT-2 풀기.** 결과 원문 파일을 읽어 sha256을 run의 값과 대조합니다. `bouts[]`의 순번으로 `analysis.bout`를 찾고, 지표 목록의 `[[table]]`에 있는 배열마다 항목 하나를 `feature.record` 행 하나로 넣습니다. `kind`는 표의 `level`, `idx`는 배열 안 순번(버린 줄이 있어도 그대로), 시각은 MC-2대로 옮기고, `v`는 그 항목 전체입니다. `v`에서 바꾸는 것은 하나뿐입니다: JSON의 NaN과 무한은 jsonb에 넣을 수 없으므로 `null`로 둡니다(MC-2의 "계산하지 못함"). COPY 한 번, 전부 한 트랜잭션입니다.
+- **FT-3 버리는 것은 하나뿐.** 줄의 시작·끝이 유한한 수가 아니거나(시각으로 나타낼 수 없을 만큼 큰 것 포함) 끝이 시작보다 앞서거나 발 값이 틀리거나 줄이 객체가 아니면 그 줄을 넣지 않고 `n_dropped_records`에 셉니다(행으로 만들 수 없으므로). 그 밖의 값은 형이나 범위가 틀려도 그대로 저장하고, 지표 목록으로 본 수를 `n_bad_values`에, 목록에 없는 필드를 `unknown_fields`에 `<배열 이름>.<필드>` 꼴로(예 `strides.x`), 목록에 없는 배열 이름을 `unknown_tables`에 적습니다. `unknown_tables`에 드는 것은 걷기 구간 바로 아래의 배열 중 지표 목록의 표가 아니고 `trajectories`도 아니며 항목이 모두 객체인 것입니다. 넷 중 하나라도 있으면 경고 로그를 남깁니다.
+- **FT-3a 실패.** 결과 원문 파일이 없거나, gzip이나 JSON이 깨졌거나, sha256이 run과 다르거나, 원문의 걷기 구간 수가 `analysis.bout`와 다르면 작업을 바로 `failed`로 둡니다(다시 해도 같으므로). 그 밖의 파일·DB 오류와 지표 목록 읽기 실패는 PL-2의 재시도입니다. 어느 경우에도 run, 걷기 구간, 궤적, 원본 보관은 그대로입니다.
 - **FT-4 읽기.** `feature.record`를 읽는 코드는 모두 `pipeline/metrics.py`의 `normalize(형식, 줄)`을 거쳐 `{지표 id: 값}`을 받습니다. 여기서 이름 옮기기, 단위 환산, 형과 범위 검사(틀리면 값 없음)를 합니다. 형식은 그 run의 `feature.unpack.formats`에서 옵니다. `v`를 직접 읽는 코드는 두지 않습니다.
 - **FT-5 다시 풀기.** 같은 run을 다시 풀면 한 트랜잭션에서 그 run의 `feature.unpack`과 `feature.record` 행을 지우고 새로 넣습니다. 지표 목록에 새 표를 더했을 때만 필요합니다. `feature.*`는 결과 원문에서 다시 만들 수 있으므로 등급은 결과이고, 이 삭제만 허용합니다.
-- **FT-6 지난 run 채우기.** `tools/unpack_features.py [--since 시각] [--all]`(TL-9)이 조건에 맞는 run마다 `feature` 작업을 넣습니다. 2단계를 처음 켤 때와 새 표를 더한 뒤에 씁니다.
+- **FT-6 지난 run 채우기.** `tools/unpack_features.py [--since 시각] [--all]`(TL-9)이 조건에 맞는 run마다 `feature` 작업을 넣습니다. 2단계를 처음 켤 때와 새 표를 더한 뒤에 씁니다. 그 순간 풀고 있는 run은 대기 작업을 하나 더 넣을 수 없어 건너뛰므로(PL-2), 도구가 건너뛴 수를 보이면 잠시 뒤 다시 돌립니다.
 - **FT-7 현재 run.** 줄은 run마다 따로 있습니다. 읽는 쪽은 1단계와 같이 `analysis.current_run`으로 현재 run의 걷기 구간만 고릅니다.
 - **FT-8 끝나면.** 푼 트랜잭션에서 `summary {device_id, date_from, date_to}` 작업을 넣습니다. 날짜는 그 run의 걷기 구간이 걸친 `Asia/Seoul` 날짜이고, 재분석이면 옛 run의 걷기 구간이 걸친 날짜도 합칩니다. 걷기 구간이 없으면 넣지 않습니다.
 - **속도와 크기.** 1시간 구간 run 하나를 푸는 트랜잭션이 200 ms 이하입니다. 보폭 한 줄은 약 0.5 kB이므로, 하루 1.5시간 걷는 1-Tag 착용자 한 명이 연 약 1 GB입니다(13.2절의 가정).
@@ -1490,7 +1491,7 @@ min_n = 3
 |---|---|---|---|
 | `GET /v1/metrics` | 지표 목록: `id`, `level`, `label`, `unit`, `meaning`, `trust`, `needs`, `show`, 지표 목록의 판. 앱은 `show`로 착용자 화면에 보일 지표를 고름 | 로그인 | summary |
 | `GET /v1/subjects/{id}/trend?metrics=&from=&to=` | 지표마다·발마다 일별 값의 배열 `{metric, side, points: [{date, value, n, sufficient}]}`. `metrics`는 쉼표로 이은 `period.*` id(최대 10개), 날짜 범위는 최대 366일 | 본인, admin | summary |
-| `GET /v1/bouts/{id}/records?kind=` | 걷기 구간 하나의 줄(보폭 등). 값은 지표 `id`로 옮긴 것(FT-4) | 본인, admin | feature |
+| `GET /v1/bouts/{id}/records?kind=` | 걷기 구간 하나의 줄(보폭 등): `{bout_id, run_id, kind, unpacked, format, records: [{idx, side, start_at, end_at, values}]}`. `values`는 지표 `id`로 옮긴 것(FT-4). `kind`의 기본은 `stride`, 지표 목록에 없는 종류는 422. 아직 풀지 않은 run이면 `unpacked = false`와 빈 배열 | 본인, admin | feature |
 | `POST /v1/subjects/{id}/reports` | `{from, to}` → 202 `{subject_id, from, to, queued}`(이미 대기 중이면 `queued = false`). 기간은 1분 이상 31일 이하 | 본인, admin | report |
 | `GET /v1/subjects/{id}/reports?from=&to=` | 보고서 목록(id, 기간, 상태, 만든 시각) | 본인, admin | report |
 | `GET /v1/reports/{id}?view=detail` | 보고서 하나: 글 원문, 지표 값 배열, 인용한 논문(제목, 저자, 연도, doi, 인용한 대목), 자료 범위(`coverage`). `view=basic`이면 글의 요약 부분, `show = "basic"`인 값, 요약이 인용한 논문만 | 본인, admin | report |
@@ -1659,12 +1660,12 @@ tests/          contract/metrics/  feature/  summary/  report/
 
 **시험과 합격 기준.**
 
-**M7 지표 규약 (MC)**
+**M7 지표 규약 (MC)** — 2026-11-11 만듦. 3번(gaitfusion 저장소의 일)은 아직.
 1. MC-7의 세 검사가 통과.
 2. 지표 목록에 MC-8의 표 그대로 33개(보폭 줄 9, 기간 24)가 있고, 항목마다 `label`, `meaning`, `trust`, `show`가 차 있음. `sources`는 gait-features.md의 참고 문헌에서 옮긴 key(논문 원문은 M10에서 모음).
 3. gaitfusion이 `summary.formats`를 내고, 복사한 지표 목록으로 자기 출력 검사를 통과(gaitfusion 저장소의 일).
 
-**M8 특징 풀기 (FT)**
+**M8 특징 풀기 (FT)** — 2026-11-11 만듦. 5번은 11일 전에 만든 `gaitfusion:local` 이미지로 한 번 통과. 6번은 개발 PC에서 1시간 양발 run(줄 6,688개)의 트랜잭션 45–49 ms.
 1. 가짜 gaitfusion의 run → `feature.unpack`과 줄. 줄 수와 `v`가 결과 원문과 같음.
 2. MC-4 표의 경우를 하나씩 넣은 응답 → 표대로이고 숫자와 이름이 `feature.unpack`에 있음. run과 걷기 구간은 그대로. 지표 목록에 `names` 한 줄을 더하면 다시 풀지 않고도 그 값이 읽힘.
 3. 시작·끝이 틀린 줄 → 그 줄만 빠지고 `n_dropped_records`에 셈.
