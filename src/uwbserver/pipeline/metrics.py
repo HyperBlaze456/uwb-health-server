@@ -28,7 +28,7 @@ TYPES = frozenset({"number", "integer", "text"})
 PRODUCERS = frozenset({"gaitfusion", "server"})
 SHOW = frozenset({"basic", "detail"})
 NEEDS = frozenset({"one_foot", "both_feet"})
-TRUST = frozenset({"validated", "proxy", "low", "unverified"})
+TRUST = frozenset({"validated", "proxy", "low", "unverified", "fact"})
 RULES = frozenset({"given", "count", "sum", "max", "median", "p90", "p95", "cv", "sd", "ratio", "cadence"})
 WHERE_KEYS = frozenset({"bout_min_s", "bout_max_s", "mode"})
 MODES = frozenset({"fused", "imu_only"})
@@ -270,6 +270,8 @@ def _period_problems(m: Metric, catalog: Catalog) -> list[str]:
         out.append(f"{m.id}: rule {m.rule!r}는 RP-3에 없음(가능한 것 {sorted(RULES)})")
     if m.by_side is None or m.min_n is None:
         out.append(f"{m.id}: period 지표에는 by_side와 min_n이 있어야 함")
+    if m.from_ == BOUT_DURATION and m.by_side:
+        out.append(f"{m.id}: from {BOUT_DURATION}에는 발이 없으므로 by_side = false여야 함")
     if m.rule == "given":
         if m.from_ is not None:
             out.append(f"{m.id}: rule given에는 from이 없어야 함")

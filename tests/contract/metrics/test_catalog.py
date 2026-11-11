@@ -212,3 +212,32 @@ def test_malformed_entry_is_a_clear_error(old, new):
     assert text != BASE
     with pytest.raises(metrics.CatalogError, match="stride"):
         parse(text)
+
+
+# --- trust fact, 발과 걷기 구간 길이 ---------------------------------------------------------
+
+
+def test_bookkeeping_values_are_fact_and_nothing_else(catalog):
+    """fact = 문헌으로 검증할 대상이 아닌 값. 이 셋만."""
+    assert "fact" in metrics.TRUST
+    assert {m.id for m in catalog.metrics if m.trust == "fact"} == {
+        "stride.uwb_support", "period.wear_time_s", "period.fused_ratio"}
+
+
+def test_fact_is_accepted_by_parse():
+    assert parse(BASE.replace('trust = "unverified"\n', 'trust = "fact"\n', 1)).metrics[0].trust == "fact"
+
+
+def test_check_reports_by_side_on_bout_duration():
+    """걷기 구간 길이에는 발이 없으므로 by_side = true는 틀림(period_values는 돌 때 예외를 냄)."""
+    text = BASE.replace('from = "stride.length_m"\nrule = "median"\nwhere = { bout_min_s = 10 }',
+                        'from = "bout.duration_s"\nrule = "median"', 1)
+    assert metrics.check(parse(text.replace("by_side = true", "by_side = false"))) == []
+    problems = metrics.check(parse(text))
+    assert any("by_side" in p and "bout.duration_s" in p for p in problems), problems
+
+
+def test_same_author_and_year_sources_have_letters(catalog):
+    keys = {s for m in catalog.metrics for s in m.sources}
+    assert "deldin2019" not in keys
+    assert {"deldin2019a", "deldin2019b"} <= keys
