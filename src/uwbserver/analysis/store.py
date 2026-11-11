@@ -173,6 +173,18 @@ def run(conn: psycopg.Connection, run_id: int) -> dict | None:
     ).fetchone()
 
 
+def unpack_of_run(conn: psycopg.Connection, run_id: int) -> dict | None:
+    """feature 단계가 이 run을 푼 기록(FT-3, 14.8절). 아직 풀지 않았으면 None."""
+    return conn.execute(
+        """
+        SELECT n_records, n_dropped_records, n_bad_values, unknown_fields, unknown_tables, catalog_version, formats,
+               unpacked_at
+        FROM feature.unpack WHERE run_id = %s
+        """,
+        (run_id,),
+    ).fetchone()
+
+
 def bouts_of_run(conn: psycopg.Connection, run_id: int) -> list[dict]:
     return conn.execute(
         """

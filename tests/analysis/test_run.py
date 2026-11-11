@@ -71,7 +71,10 @@ def test_result_status_partial_is_done_and_current(env, device):
     n_bouts = env.scalar("SELECT count(*) FROM analysis.bout WHERE run_id = %s", (run["id"],))
     assert env.scalar("SELECT count(*) FROM analysis.trajectory") == n_bouts - 1  # 한 발 구간: 마지막 구간의 궤적이 빠짐
     assert len(list(env.data_root.rglob("*.trj"))) == n_bouts - 1
-    assert env.q("SELECT kind FROM pipeline.job WHERE state = 'queued'") == [{"kind": "archive"}]
+    # 다시 분석하지 않음: 대기 작업은 원본 보관과 특징 풀기(FT-1)뿐
+    assert env.q("SELECT kind FROM pipeline.job WHERE state = 'queued' ORDER BY id") == [
+        {"kind": "archive"}, {"kind": "feature"}
+    ]
 
 
 def test_result_status_absent_is_null(env, device):

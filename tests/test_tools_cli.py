@@ -23,6 +23,7 @@ TOOLS = [
     "import_usb",
     "bench",
     "papers",
+    "unpack_features",
 ]
 
 

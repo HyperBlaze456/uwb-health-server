@@ -13,7 +13,7 @@ import pytest
 SRC = Path(__file__).resolve().parents[1] / "src" / "uwbserver"
 WRITE = re.compile(r"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|COPY)\s+([a-z_]+)\.([a-z_]+)", re.I)
 ALLOWED_EXTRA = {"archive": {"intake"}}
-STAGES = ["registry", "intake", "segment", "analysis", "archive"]
+STAGES = ["registry", "intake", "segment", "analysis", "archive", "feature"]
 
 
 def _writes(path: Path) -> set[str]:

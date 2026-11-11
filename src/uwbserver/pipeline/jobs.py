@@ -10,7 +10,7 @@ from typing import Literal
 
 import psycopg
 
-Kind = Literal["analysis", "archive"]
+Kind = Literal["analysis", "archive", "feature"]
 
 MAX_RETRIES = 3  # 처음 시도까지 모두 네 번
 DONE_KEEP_DAYS = 30
@@ -57,6 +57,19 @@ def enqueue_archive(conn: psycopg.Connection, run_id: int, *, now: datetime) -> 
         INSERT INTO pipeline.job (kind, run_id, run_after, created_at)
         VALUES ('archive', %s, %s, %s)
         ON CONFLICT (run_id) WHERE kind = 'archive' AND state IN ('queued','running') DO NOTHING
+        """,
+        (run_id, now, now),
+    )
+    return cur.rowcount == 1
+
+
+def enqueue_feature(conn: psycopg.Connection, run_id: int, *, now: datetime) -> bool:
+    """feature {run_id} (FT-1, FT-5, FT-6). 같은 run의 대기·실행 작업이 있으면 넣지 않고 False."""
+    cur = conn.execute(
+        """
+        INSERT INTO pipeline.job (kind, run_id, run_after, created_at)
+        VALUES ('feature', %s, %s, %s)
+        ON CONFLICT (run_id) WHERE kind = 'feature' AND state IN ('queued','running') DO NOTHING
         """,
         (run_id, now, now),
     )

@@ -1,4 +1,4 @@
-"""core 프로세스: 5초 루프(segment) + 작업 스레드(analysis, archive) + 매일 삭제(archive.purge).
+"""core 프로세스: 5초 루프(segment) + 작업 스레드(analysis, archive, feature) + 매일 삭제(archive.purge).
 
     python -m uwbserver.process.core
 """
@@ -15,6 +15,7 @@ import psycopg
 from uwbserver.analysis import gaitfusion
 from uwbserver.analysis import run as analysis_run
 from uwbserver.archive import run as archive_run
+from uwbserver.feature import run as feature_run
 from uwbserver.pipeline import clock, db, jobs, log, settings
 from uwbserver.segment import run as segment_run
 
@@ -97,6 +98,8 @@ class Core:
             return None
         if job.kind == "analysis":
             return analysis_run.handle(conn, job, self.client, gaitfusion_version=self.gaitfusion_version)
+        if job.kind == "feature":
+            return feature_run.handle(conn, job)
         return archive_run.handle(conn, job)
 
     def _worker(self, kinds: tuple[str, ...], name: str) -> None:
@@ -120,6 +123,7 @@ class Core:
             for i in range(self.s.analysis_workers)
         ]
         threads.append(threading.Thread(target=self._worker, args=(("archive",), "archive-0"), daemon=True))
+        threads.append(threading.Thread(target=self._worker, args=(("feature",), "feature-0"), daemon=True))
         for t in threads:
             t.start()
         while not self.stop.is_set():

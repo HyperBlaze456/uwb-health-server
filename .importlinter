@@ -8,7 +8,7 @@ name = 아래로만
 type = layers
 layers =
     uwbserver.process
-    uwbserver.intake | uwbserver.segment | uwbserver.analysis | uwbserver.archive | uwbserver.report
+    uwbserver.intake | uwbserver.segment | uwbserver.analysis | uwbserver.archive | uwbserver.feature | uwbserver.report
     uwbserver.registry
     uwbserver.pipeline
 

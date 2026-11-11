@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 
 from uwbserver.analysis import routes as analysis_routes
+from uwbserver.feature import routes as feature_routes
 from uwbserver.intake import routes as intake_routes
 from uwbserver.pipeline import db, log, settings
 from uwbserver.registry import routes as registry_routes
@@ -31,7 +32,7 @@ def create_app() -> FastAPI:
         description="SPEC.md 8절. 인증은 Authorization: Bearer <로그인 토큰>. 시각은 UTC ISO 8601.",
         lifespan=lifespan,
     )
-    for r in (registry_routes, intake_routes, segment_routes, analysis_routes):
+    for r in (registry_routes, intake_routes, segment_routes, analysis_routes, feature_routes):
         app.include_router(r.app_router)
 
     @app.get("/healthz", include_in_schema=False)

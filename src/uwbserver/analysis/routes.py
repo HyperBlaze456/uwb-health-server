@@ -13,11 +13,15 @@ app_router = APIRouter(prefix="/v1", tags=["analysis"])
 
 @app_router.get("/runs/{run_id}")
 def get_run(run_id: int, _: AdminUser, conn: Conn) -> dict:
-    """run과 걷기 구간 목록. result_status: complete·partial(궤적 일부가 빠짐)·null(응답에 없음, skipped)."""
+    """run과 걷기 구간 목록. result_status: complete·partial(궤적 일부가 빠짐)·null(응답에 없음, skipped).
+
+    unpack: feature 단계가 이 run의 결과 원문을 푼 기록(14.8절) {n_records, n_dropped_records, n_bad_values,
+    unknown_fields, unknown_tables, catalog_version, formats, unpacked_at}. 아직 풀지 않았거나 skipped run이면 null."""
     run = store.run(conn, run_id)
     if run is None:
         raise not_found()
     run["bouts"] = store.bouts_of_run(conn, run_id)
+    run["unpack"] = store.unpack_of_run(conn, run_id)
     return run
 
 

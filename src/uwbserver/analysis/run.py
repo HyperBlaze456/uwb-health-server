@@ -1,7 +1,7 @@
 """analysis 단계 실행: `analysis {segment_id}` 작업 하나 → run 하나 또는 0개 (AN-1–AN-10).
 
 순서: 구간 확인 → 입력 고르기 → 문맥 → run 번호 → C2 호출 → 응답 검사 → 파일(임시 이름 → fsync → 이름 바꾸기)
-→ 한 트랜잭션(run·bout·궤적 행, 작업 끝, 다음 작업) → 커밋 뒤 옛 궤적 삭제.
+→ 한 트랜잭션(run·bout·궤적 행, 작업 끝, 다음 작업: archive, done이면 feature) → 커밋 뒤 옛 궤적 삭제.
 """
 
 import gzip
@@ -207,6 +207,7 @@ def _store_done(
                 t["bout_id"] = by_idx[t["idx"]]
             store.copy_trajectories(conn, traj_rows)
             _finish_and_follow(conn, job, run_id, seg)
+            jobs.enqueue_feature(conn, run_id, now=clock.now())  # FT-1: done run만(skipped는 넣지 않음)
             committing = True  # 이 블록을 나가며 COMMIT
         db_ms = round((time.perf_counter() - t_db) * 1000, 1)
     except (OSError, psycopg.Error) as e:

@@ -1,4 +1,4 @@
-"""진짜 gaitfusion 전 구간 시험 (M3-9): 진짜 분석 서비스 이미지로 받기 → 구간 → 분석 → 보관 → 앱 API,
+"""진짜 gaitfusion 전 구간 시험 (M3-9, M8-5): 진짜 분석 서비스 이미지로 받기 → 구간 → 분석 → 보관·특징 풀기 → 앱 API,
 그리고 원본 행이 지워진 뒤 보관본으로 다시 분석해도 같은 걷기 구간과 궤적이 나오는지(AR-8, 7.1절의 seq 빈자리).
 
 gaitfusion 이미지를 먼저 만들고 그 이름을 줍니다:
@@ -124,6 +124,19 @@ def test_real_gaitfusion(stack):
     assert ranges[1][0] - ranges[0][1] > 60, ranges  # 보관본 재분석 때 seq 빈자리가 수 분
     assert len(list((s.data / "archive").rglob("*.bin"))) == len(ranges)
 
+    # M8-5: 특징 풀기. 그 run의 보폭 줄이 걷기 구간마다 있고, 지표 목록으로 본 틀린 값과 모르는 필드·표가 없음
+    wait_until(lambda: s.psql(f"SELECT count(*) FROM feature.unpack WHERE run_id = {run1}") == "1", 120,
+               "feature.unpack")  # fmt: skip
+    [[n_records, n_dropped, n_bad, unknown_fields, unknown_tables]] = s.rows(
+        f"""SELECT n_records, n_dropped_records, n_bad_values, unknown_fields, unknown_tables
+            FROM feature.unpack WHERE run_id = {run1}""")
+    assert (int(n_dropped), int(n_bad), unknown_fields, unknown_tables) == (0, 0, "{}", "{}")
+    strides_per_bout = s.rows(f"""SELECT b.idx, count(r.id) FROM analysis.bout b
+                                  LEFT JOIN feature.record r ON r.bout_id = b.id AND r.kind = 'stride'
+                                  WHERE b.run_id = {run1} GROUP BY b.idx ORDER BY b.idx""")
+    assert all(int(n) > 0 for _, n in strides_per_bout), strides_per_bout
+    assert sum(int(n) for _, n in strides_per_bout) == int(n_records)
+
     # 앱 API: 걷기 구간의 궤적(양발)과 응답 원문
     s.create_admin(*ADMIN)
     auth = s.login(*ADMIN)
@@ -133,6 +146,9 @@ def test_real_gaitfusion(stack):
     assert all(t["n"] > 0 for t in r.json()["trajectories"])
     r = httpx.get(f"{s.api}/v1/runs/{run1}/result", headers=auth, timeout=10)
     assert r.status_code == 200 and len(r.json()["bouts"]) == len(bouts)
+    r = httpx.get(f"{s.api}/v1/bouts/{bouts[0][0]}/records", headers=auth, timeout=10)
+    assert r.status_code == 200 and r.json()["records"], r.text
+    assert all(len(rec["values"]) == 9 for rec in r.json()["records"])  # 융합이라 uwb_support까지 9개 모두
 
     # 30일 삭제(AR-6)가 지우는 원본 행을 지움. 30일을 기다릴 수 없어 같은 순서로 직접 지움. 보관 파일은 그대로
     s.psql(f"""BEGIN;

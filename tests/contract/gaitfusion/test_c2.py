@@ -351,7 +351,12 @@ def test_service_good_response_passes_checks(service):
         "sides": ["left"], "sensor_site": "lateral_ankle",
     }  # fmt: skip
     raw = json.loads(checked.result_bytes)  # 표에 없는 필드는 원문에 그대로(AN-10)
-    assert all(raw["bouts"][0][k] == [] for k in ("strides", "turns", "steps", "windows", "events"))
+    assert all(raw["bouts"][0][k] == [] for k in ("turns", "steps", "windows", "events"))
+    # 보폭 줄: 걷기 구간 [3, 15] 안의 1/0.9초 보폭(왼발만, IMU 단독이라 uwb_support = null)
+    strides = raw["bouts"][0]["strides"]
+    assert len(strides) == 10 and {s["side"] for s in strides} == {"left"}
+    assert strides[0]["start_s"] == 3.0 and strides[-1]["end_s"] <= 15.0
+    assert all(s["uwb_support"] is None for s in strides)
     assert raw["bouts"][0]["quality"] == {"uwb_accept_ratio": None}
     data = {p.name: p.data for p in reply.parts}["traj-0-left"]
     ch = rules.read_channels(data, ["stance", "sig_px"], step=4)

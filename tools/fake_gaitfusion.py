@@ -15,6 +15,9 @@
 걷기 구간: IMU 프레임이 있는 묶음이 Head 시각으로 이어진(다음 head_us_start − 앞 = 1초 ± 50 ms) 부분이 10초 이상이면
 하나. 시각축 0 = context.origin_head_us. 발 = 그 부분에서 IMU 프레임이 있는 tag_id(0 왼쪽, 1 오른쪽).
 궤적은 발마다 TRJ1 하나, 걷기 구간 ± bout_pad_s를 [0, t_last]로 자름. 값은 결정적인 합성값.
+보폭 줄(strides, gaitfusion.stride/1, gaitfusion service.md 4절과 같은 필드): 발마다 1/STRIDE_HZ초 간격으로 걷기 구간
+안에 들어가는 것만. 오른발은 반 주기 늦게 시작. 값은 합성 궤적과 맞춘 결정적인 값(속도 1.1 m/s, 디딤 절반).
+uwb_support는 융합이면 그 구간의 quality.uwb_accept_ratio, IMU 단독이면 null. 줄은 시작 시각 순.
 TRJ1 부호기는 서버의 rules.py와 따로 씁니다(서버의 해독기를 시험하려고).
 """
 
@@ -250,6 +253,33 @@ def synth_channels(side: str, t0_s: float, n: int, bout_start_s: float) -> list[
     ]
 
 
+def synth_strides(start: float, end: float, tag_ids: set[int], uwb_support: float | None) -> list[dict]:
+    """결정적인 보폭 줄(gaitfusion.stride/1). 지표 목록(contracts/metrics.toml)의 범위 안의 값."""
+    period = 1.0 / STRIDE_HZ
+    rows = []
+    for tag in sorted(tag_ids):
+        side = SIDE_NAMES[tag]
+        t = start + (period / 2 if side == "right" else 0.0)
+        while t + period <= end + 1e-9:
+            mid = t + period / 2
+            rows.append({
+                "side": side,
+                "start_s": round(t, 6),
+                "end_s": round(t + period, 6),
+                "duration_s": round(period, 6),
+                "length_m": round(1.1 * period, 6),
+                "speed_mps": 1.1,
+                "clearance_m": 0.07,
+                "heading_deg": round(2.0 * math.sin(0.1 * mid), 6),
+                "swing_s": round(period / 2, 6),
+                "stance_s": round(period / 2, 6),
+                "stance_ratio": 0.5,
+                "uwb_support": uwb_support,
+            })  # fmt: skip
+            t += period
+    return sorted(rows, key=lambda r: (r["start_s"], r["side"]))
+
+
 def _walking_runs(chunks: list[wire.Chunk]) -> list[list[wire.Chunk]]:
     """IMU 프레임이 있는 묶음이 Head 시각으로 이어진 부분들."""
     runs: list[list[wire.Chunk]] = []
@@ -298,7 +328,7 @@ def _bout(
         "sides": _sides_of(tag_ids),
         "quality": {"uwb_accept_ratio": ratio},
         "trajectories": entries,
-        "strides": [],
+        "strides": synth_strides(start, end, tag_ids, ratio),
         "turns": [],
         "steps": [],
         "windows": [],

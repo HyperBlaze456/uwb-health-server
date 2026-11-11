@@ -83,6 +83,7 @@ docker compose exec core python tools/verify_archive.py
 | `admin.py` | `create-admin`, `register-device`, `rotate-token`, `reanalyze` | `api_rw` | TL-6 |
 | `import_usb.py <기록> --device MAC=TOKEN --utc-start ISO [--dry-run]` | Head USB 기록(`record_usb.py` 출력)을 1초 묶음으로 바꿔 intake에 보냄. `--dry-run`은 검사만 | 없음(HTTP) | TL-7 |
 | `bench.py` | 장치 N대로 초당 1요청씩 보내고 intake 로그에서 p95를 셈 | 없음(`--register`는 `api_rw`) | TL-8 |
+| `unpack_features.py --all \| --since ISO` | 결과 원문이 있는 지난 run마다 `feature` 작업을 넣음(지난 run 채우기, 새 표를 더한 뒤 다시 풀기) | `core_rw` | TL-9 |
 
 ## 데이터는 어디에
 
