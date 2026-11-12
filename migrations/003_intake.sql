@@ -20,7 +20,7 @@ CREATE TABLE intake.chunk (
   dropped_imu_frames integer     NOT NULL,
   status_mask        smallint    NOT NULL,      -- 묶음 안 상태 블록. bit0 system, bit1 health, bit2 survey
   -- Tag 자리 두 칸(펌웨어 한계 = 세트당 2). 받기를 행 하나로 끝내려고 둔 고정 열(공통 규칙의 예외).
-  tag_mask           smallint    NOT NULL,      -- wire 머리 tag_mask. bit0 T0(왼쪽), bit1 T1(오른쪽) 프레임 있음
+  tag_mask           smallint    NOT NULL,      -- wire 머리 tag_mask. bit0 T0(오른쪽), bit1 T1(왼쪽) 프레임 있음
   tag0_mac           macaddr,                   -- 묶음 안 T0의 첫 IMU 프레임. IMU 프레임이 없으면 NULL
   tag0_boot_id       bigint,
   tag1_mac           macaddr,                   -- T1의 첫 IMU 프레임

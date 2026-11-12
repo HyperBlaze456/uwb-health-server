@@ -55,7 +55,7 @@ CREATE INDEX segment_no_installation ON segment.segment (device_id, geometry_has
 -- 등급: 결과. 구간에 있던 발과 Tag. 발마다 한 행(SG-6). 1-Tag 세트는 한 행.
 CREATE TABLE segment.segment_tag (
   segment_id    bigint      NOT NULL REFERENCES segment.segment(id),
-  side          text        NOT NULL CHECK (side IN ('left','right')),   -- tag_id 0 = left, 1 = right
+  side          text        NOT NULL CHECK (side IN ('left','right')),   -- tag_id 0 = right, 1 = left
   tag_mac       macaddr,                          -- NULL = 이 발은 아직 거리 프레임만(IMU 프레임 없음)
   tag_boot_id   bigint,
   first_seen_at timestamptz NOT NULL,

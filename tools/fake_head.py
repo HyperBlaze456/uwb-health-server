@@ -339,8 +339,8 @@ _gait_cache: dict[int, tuple[bytes, ...]] = {}
 
 
 def _gait_table(side: int) -> tuple[bytes, ...]:
-    """Packed raw (14 B) for 9 strides of synthetic ankle IMU while walking. side 0 = left, 1 = right
-    (half a stride later). Deterministic."""
+    """Packed raw (14 B) for 9 strides of synthetic ankle IMU while walking. side = tag_id: 0 = T0 (right foot),
+    1 = T1 (left foot, half a stride later). Deterministic."""
     if side in _gait_cache:
         return _gait_cache[side]
     rng = random.Random(f"fake-head-gait:{side}")
@@ -652,7 +652,7 @@ class FakeHead:
             walked = laps * walk_s + min(rem, walk_s)
         th = walked * _LAP_RAD_PER_S
         cx, cy, rx, ry = self._room
-        side = 0.1 if tag_id == 0 else -0.1             # left foot on the inner side (anticlockwise lap)
+        side = 0.1 if tag_id == 1 else -0.1             # T1 = left foot on the inner side (anticlockwise lap)
         return cx + (rx - side) * math.cos(th), cy + (ry - side) * math.sin(th), 0.08
 
     def _range_frames(self, ws: int, we: int) -> list[bytes]:
@@ -931,7 +931,7 @@ def _sc_steady(d, duration_s: int = 600) -> None:
 
 
 def _sc_normal(d, duration_s: int = 600) -> None:
-    """1-Tag, online. One segment, sides left, 1 segment_tag row; every second is a chunk with frames
+    """1-Tag, online. One segment, sides right, 1 segment_tag row; every second is a chunk with frames
     (codes all 0); walking 40 s of every 120 s -> 5 bouts in 600 s."""
     _sc_steady(d, duration_s)
 
@@ -1024,7 +1024,7 @@ def _sc_late_old_boot(d, before_s: int = 120, held_s: int = 20, new_before_s: in
 
 
 def _sc_tag_swap(d, before_s: int = 120, after_s: int = 120) -> None:
-    """The left Tag (T0) is replaced by another board at before_s (a walking start by default, so IMU frames of
+    """The right Tag (T0) is replaced by another board at before_s (a walking start by default, so IMU frames of
     the new Tag come at once). Segment 1 = seq 0..before_s-1 closed tag_changed; segment 2 from there. The swap
     chunk also has a system block with the new set_members."""
     d.run(before_s)
@@ -1035,7 +1035,7 @@ def _sc_tag_swap(d, before_s: int = 120, after_s: int = 120) -> None:
 def _sc_t1_appears(d, before_s: int = 60, after_s: int = 180) -> None:
     """2-Tag Head; T1 is off at first and powered on at before_s (a rest period by default: its range frames
     come first, its IMU frames from the next walk at 120 s). One segment, sides both, 2 segment_tag rows; the
-    right row gets its MAC when T1's first IMU frame arrives."""
+    left row gets its MAC when T1's first IMU frame arrives."""
     d.head.set_tag(1, on=False)
     d.run(before_s)
     d.head.set_tag(1, on=True)

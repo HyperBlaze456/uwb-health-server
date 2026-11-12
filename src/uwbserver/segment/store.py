@@ -6,7 +6,7 @@ from datetime import datetime
 import psycopg
 from psycopg.types.json import Jsonb
 
-from uwbserver.segment.rules import ChunkIn, InstallationIn, Seg, SegTag, Side
+from uwbserver.segment.rules import SIDE_OF_TAG, ChunkIn, InstallationIn, Seg, SegTag, Side
 
 _SEG_COLS = [f.name for f in fields(Seg)]
 _SEG_MUTABLE = [c for c in _SEG_COLS if c not in ("id", "device_id", "head_boot_id", "first_seq", "first_head_us")]
@@ -32,10 +32,10 @@ def load_chunks(conn: psycopg.Connection, after_id: int, limit: int) -> list[Chu
     out = []
     for r in rows:
         tags: dict[Side, tuple[str, int] | None] = {}
-        if r["tag_mask"] & 1:
-            tags["left"] = (r["tag0_mac"], r["tag0_boot_id"]) if r["tag0_mac"] else None
-        if r["tag_mask"] & 2:
-            tags["right"] = (r["tag1_mac"], r["tag1_boot_id"]) if r["tag1_mac"] else None
+        for tag_id, side in SIDE_OF_TAG.items():
+            if r["tag_mask"] & (1 << tag_id):
+                mac, boot = r[f"tag{tag_id}_mac"], r[f"tag{tag_id}_boot_id"]
+                tags[side] = (mac, boot) if mac else None
         out.append(
             ChunkIn(
                 id=r["id"], device_id=r["device_id"], head_boot_id=r["head_boot_id"], seq=r["chunk_seq"],

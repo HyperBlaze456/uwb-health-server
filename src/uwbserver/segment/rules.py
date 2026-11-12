@@ -11,7 +11,7 @@ from typing import Literal
 from uwbserver.pipeline import clock, wire
 
 Side = Literal["left", "right"]
-SIDE_OF_TAG = {0: "left", 1: "right"}  # tag_id 0 = T0 왼쪽, 1 = T1 오른쪽
+SIDE_OF_TAG: dict[int, Side] = {0: "right", 1: "left"}  # tag_id 0 = T0 오른쪽, 1 = T1 왼쪽. tag_mask bit = 1 << tag_id
 SOURCE = {0: "default", 1: "survey", 2: "manual"}
 SECOND_US = 1_000_000
 

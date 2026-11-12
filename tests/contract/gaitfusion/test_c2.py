@@ -76,8 +76,8 @@ def c1_chunk(
     return data
 
 
-def walking_left() -> list[bytes]:
-    """왼발 하나. 걷기 [3, 15)와 [24, 35), 그 사이 5초 IMU(짧아서 걷기 아님)와 seq 빈자리 22–23."""
+def walking_right() -> list[bytes]:
+    """오른발(T0) 하나. 걷기 [3, 15)와 [24, 35), 그 사이 5초 IMU(짧아서 걷기 아님)와 seq 빈자리 22–23."""
     out = []
     for seq in range(35):
         if seq in (22, 23):
@@ -93,7 +93,7 @@ def walking_both(n: int = 12) -> list[bytes]:
 
 
 def context(
-    sides: str = "left", anchors: list | None = None, *, origin: int = ORIGIN, params: dict | None = None
+    sides: str = "right", anchors: list | None = None, *, origin: int = ORIGIN, params: dict | None = None
 ) -> dict:
     return rules.build_context(
         segment_id=1234, run_id=5678, sides=sides, origin_head_us=origin, anchors=anchors,
@@ -227,9 +227,9 @@ def test_request_parts_order_and_context_fields():
         seen.append(request)
         return httpx.Response(422, json={"reason": "x"})
 
-    chunks = walking_left()
+    chunks = walking_right()
     body = wire.join_records(chunks)
-    ctx = context("left", ANCHORS, params={"bout_pad_s": 2.0})
+    ctx = context("right", ANCHORS, params={"bout_pad_s": 2.0})
     with Client("http://gf:8100/", 5, http=httpx.Client(transport=httpx.MockTransport(handler))) as c:
         c.analyze(ctx, body)
     (req,) = seen
@@ -325,40 +325,40 @@ def test_service_version(service):
 
 def test_service_good_response_passes_checks(service):
     client, is_fake = service
-    chunks = walking_left()
-    ctx = context("left", None)
+    chunks = walking_right()
+    ctx = context("right", None)
     reply = client.analyze(ctx, wire.join_records(chunks))
     assert reply.status == 200, reply
     t_last = t_last_of(chunks)
     assert t_last == 35.0
-    checked = rules.check_response(reply.parts, segment_sides="left", anchors_sent=False, t_last=t_last)
+    checked = rules.check_response(reply.parts, segment_sides="right", anchors_sent=False, t_last=t_last)
     if not is_fake:
         return
     # 가짜의 걷기 구간 규칙(TL-2): IMU가 이어진 10초 이상만, 궤적은 ± 2초를 [0, t_last]로 자름
     assert [(b.idx, b.start_s, b.end_s, b.mode, b.sides) for b in checked.bouts] == [
-        (0, 3.0, 15.0, "imu_only", "left"),
-        (1, 24.0, 35.0, "imu_only", "left"),
+        (0, 3.0, 15.0, "imu_only", "right"),
+        (1, 24.0, 35.0, "imu_only", "right"),
     ]
-    assert [b.trajectories for b in checked.bouts] == [(("left", "traj-0-left"),), (("left", "traj-1-left"),)]
-    t0 = checked.trajectories["traj-0-left"]
-    t1 = checked.trajectories["traj-1-left"]
-    assert (t0.side, t0.rate_hz, t0.t0_s, t0.n, t0.end_s) == ("left", 100, 1.0, 1601, 17.0)
+    assert [b.trajectories for b in checked.bouts] == [(("right", "traj-0-right"),), (("right", "traj-1-right"),)]
+    t0 = checked.trajectories["traj-0-right"]
+    t1 = checked.trajectories["traj-1-right"]
+    assert (t0.side, t0.rate_hz, t0.t0_s, t0.n, t0.end_s) == ("right", 100, 1.0, 1601, 17.0)
     assert (t1.t0_s, t1.n, t1.end_s, t1.nbytes) == (22.0, 1301, 35.0, 28 + 52 * 1301)
     assert checked.gaitfusion_version == "fake-1.0"
     n_imu_chunks = 12 + 5 + 11
     assert checked.summary == {
         "n_imu": n_imu_chunks * IMU_FRAMES * 10, "n_range": len(chunks), "seq_gaps": 1,
-        "sides": ["left"], "sensor_site": "lateral_ankle",
+        "sides": ["right"], "sensor_site": "lateral_ankle",
     }  # fmt: skip
     raw = json.loads(checked.result_bytes)  # 표에 없는 필드는 원문에 그대로(AN-10)
     assert all(raw["bouts"][0][k] == [] for k in ("turns", "steps", "windows", "events"))
-    # 보폭 줄: 걷기 구간 [3, 15] 안의 1/0.9초 보폭(왼발만, IMU 단독이라 uwb_support = null)
+    # 보폭 줄: 걷기 구간 [3, 15] 안의 1/0.9초 보폭(오른발만, 반 주기 늦게 시작. IMU 단독이라 uwb_support = null)
     strides = raw["bouts"][0]["strides"]
-    assert len(strides) == 10 and {s["side"] for s in strides} == {"left"}
-    assert strides[0]["start_s"] == 3.0 and strides[-1]["end_s"] <= 15.0
+    assert len(strides) == 10 and {s["side"] for s in strides} == {"right"}
+    assert strides[0]["start_s"] == pytest.approx(3.0 + 0.5 / 0.9, abs=1e-6) and strides[-1]["end_s"] <= 15.0
     assert all(s["uwb_support"] is None for s in strides)
     assert raw["bouts"][0]["quality"] == {"uwb_accept_ratio": None}
-    data = {p.name: p.data for p in reply.parts}["traj-0-left"]
+    data = {p.name: p.data for p in reply.parts}["traj-0-right"]
     ch = rules.read_channels(data, ["stance", "sig_px"], step=4)
     assert set(ch["stance"]) == {0.0, 1.0} and len(ch["stance"]) == rules.stepped_n(1601, 4) == 401
     assert ch["sig_px"][0] is None and all(v is not None for v in ch["sig_px"][1:])  # 첫 표본 NaN → None
@@ -378,7 +378,7 @@ def test_service_bad_chunk_is_400_with_index(service):
 def test_service_no_imu_is_422(service):
     client, is_fake = service
     chunks = [c1_chunk(seq, imu=()) for seq in range(15)]
-    reply = client.analyze(context("left", ANCHORS), wire.join_records(chunks))
+    reply = client.analyze(context("right", ANCHORS), wire.join_records(chunks))
     assert reply.status == 422 and reply.parts is None and reply.reason
     if is_fake:
         assert reply.reason == "no_imu"
@@ -432,9 +432,9 @@ def test_fake_is_deterministic():
 @pytest.mark.parametrize(
     ("ctx", "chunks", "index"),
     [
-        (context("left"), walking_both(3), 0),  # 오른발 프레임인데 sides = left
-        (context("left", origin=ORIGIN + 1), walking_left()[:3], 0),  # origin ≠ 첫 묶음
-        (context("left"), [c1_chunk(1), c1_chunk(0)], 1),  # seq 순서
+        (context("right"), walking_both(3), 0),  # 왼발(T1) 프레임인데 sides = right
+        (context("right", origin=ORIGIN + 1), walking_right()[:3], 0),  # origin ≠ 첫 묶음
+        (context("right"), [c1_chunk(1), c1_chunk(0)], 1),  # seq 순서
     ],
 )
 def test_fake_rejects_request_that_breaks_c2(ctx, chunks, index):
@@ -445,12 +445,12 @@ def test_fake_rejects_request_that_breaks_c2(ctx, chunks, index):
 def test_fake_rejects_bad_context():
     ctx = context()
     ctx["extra"] = 1
-    reply = fake_client().analyze(ctx, wire.join_records(walking_left()[:3]))
+    reply = fake_client().analyze(ctx, wire.join_records(walking_right()[:3]))
     assert reply.status == 400 and "context" in reply.reason
 
 
 def test_fake_modes_422_and_500():
-    body = wire.join_records(walking_left())
+    body = wire.join_records(walking_right())
     assert fake_client("422").analyze(context(), body) == AnalyzeReply(422, None, "fake_422", None)
     assert fake_client("500").analyze(context(), body) == AnalyzeReply(500, None, None, None)
     with pytest.raises(ValueError):
@@ -461,15 +461,15 @@ def test_malformed_modes_cover_every_check_rule():
     assert set(fake.MALFORMED_RULES) == set(rules.RESPONSE_RULES)
 
 
-_SHORT_LEFT = [c1_chunk(seq) for seq in range(6)]  # 걷기 없음 → 가짜가 [0, t_last]를 하나로
+_SHORT_RIGHT = [c1_chunk(seq) for seq in range(6)]  # 걷기 없음 → 가짜가 [0, t_last]를 하나로
 _TWO_FEET = walking_both(12)
 
 
 @pytest.mark.parametrize("rule", fake.MALFORMED_RULES)
 @pytest.mark.parametrize(
     ("sides", "anchors", "chunks"),
-    [("left", None, _SHORT_LEFT), ("both", ANCHORS, _TWO_FEET)],
-    ids=["left-imu_only", "both-fused"],
+    [("right", None, _SHORT_RIGHT), ("both", ANCHORS, _TWO_FEET)],
+    ids=["right-imu_only", "both-fused"],
 )
 def test_fake_malformed_response_fails_that_rule(rule, sides, anchors, chunks):
     reply = fake_client(f"malformed:{rule}").analyze(context(sides, anchors), wire.join_records(chunks))

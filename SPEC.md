@@ -389,7 +389,7 @@ volumes: {certs: {}, pgdata: {}}
   - `boot_changed`: c가 **그 부팅의 첫 구간**을 만들었을 때(같은 `(device_id, head_boot_id)`의 구간이 그때까지 없었음)만, 같은 장치의 열린 구간 중 부팅이 c와 다른 것을 닫습니다. 그래서 옛 부팅의 묶음이 늦게 와 옛 구간이 다시 열려도 새 부팅의 구간을 닫지 않고, 다시 열린 옛 구간은 침묵 60초로 닫힙니다. 프레임 없는 묶음(SG-2)은 이 규칙을 일으키지 않습니다.
   - SG-4의 이유로 닫힘.
   - 닫을 때마다 그 구간의 `analysis` 작업을 넣습니다(PL-2의 중복 방지). 인터넷이 60초 넘게 끊긴 뒤 밀린 묶음이 오면 구간이 다시 열리고, 다시 닫힐 때 재분석됩니다.
-- **SG-6 Tag와 발.** 묶음의 `tag_mask`에 있는 발 자리(bit0 = `left`, bit1 = `right`)마다 `segment_tag` 행이 없으면 넣습니다(`first_seen_at = c.received_at`). MAC은 `intake.chunk.tag0_mac`/`tag1_mac`에서 오고, 거리 프레임만 있던 발은 NULL로 넣었다가 그 발의 IMU 프레임이 처음 오면 채웁니다. 이미 MAC이 있는 행은 바꾸지 않습니다(다르면 P 뒤에서는 `tag_changed`, P 안쪽에서는 경고). `sides`는 `segment_tag` 행으로 정합니다(`left`·`right`·`both`).
+- **SG-6 Tag와 발.** 묶음의 `tag_mask`에 있는 발 자리(bit0 = `right`, bit1 = `left`)마다 `segment_tag` 행이 없으면 넣습니다(`first_seen_at = c.received_at`). MAC은 `intake.chunk.tag0_mac`/`tag1_mac`에서 오고, 거리 프레임만 있던 발은 NULL로 넣었다가 그 발의 IMU 프레임이 처음 오면 채웁니다. 이미 MAC이 있는 행은 바꾸지 않습니다(다르면 P 뒤에서는 `tag_changed`, P 안쪽에서는 경고). `sides`는 `segment_tag` 행으로 정합니다(`left`·`right`·`both`).
 - **SG-7 시각.** 구간의 UTC는 `head_us + utc_offset_us` 하나로 셉니다.
   - 구간 안에 flags bit0(UTC 추정)이 켜진 묶음이 있으면 그중 처음 들어온 묶음의 `utc_us_start − head_us_start`가 `utc_offset_us`이고 `time_source = 'server'`입니다.
   - 없으면 구간 첫 묶음의 `received_at − 1초 − head_us_start`이고 `time_source = 'arrival'`입니다. 나중에 bit0 묶음이 더해지면 그 값으로 바꾸고 `'server'`로 고칩니다.
@@ -502,7 +502,7 @@ volumes: {certs: {}, pgdata: {}}
   "segment_id": 1234,
   "run_id": 5678,
   "origin_head_us": 81234567890,
-  "sides": "left",
+  "sides": "right",
   "anchors": [{"id": 0, "xyz_m": [0.0, 0.0, 1.2], "bias_m": 0.0}, {"id": 1, "xyz_m": [4.1, 0.0, 1.2], "bias_m": 0.0},
               {"id": 2, "xyz_m": [3.9, 3.2, 1.2], "bias_m": 0.0}, {"id": 3, "xyz_m": [0.1, 3.1, 0.4], "bias_m": 0.0}],
   "subject": {"height_m": 1.72, "leg_length_m": 0.90, "paretic_side": null},
@@ -511,7 +511,7 @@ volumes: {certs: {}, pgdata: {}}
 ```
 
 - `anchors`가 null이면 IMU 단독 모드입니다. `subject`는 null일 수 있고, 그 안의 각 값도 null일 수 있습니다.
-- 발은 묶음 프레임의 `tag_id`로 서비스가 정합니다(0 = 왼쪽, 1 = 오른쪽). `sides`는 구간에 있던 발입니다.
+- 발은 묶음 프레임의 `tag_id`로 서비스가 정합니다(0 = 오른쪽, 1 = 왼쪽). `sides`는 구간에 있던 발입니다.
 - `params`의 null은 서비스 기본값입니다. 걷기 구간 기준은 **정지와 swing 교대 4보폭 이상, 멈춤 3초 미만**입니다. 멈춤이 3초 미만이면 한 걷기 구간으로 합치므로, 서로 다른 걷기 구간 사이는 3초 이상 떨어집니다.
 - `bout_pad_s`(기본 2초)는 **궤적에만** 붙는 앞뒤 여유입니다. 응답의 `start_s`·`end_s`는 여유 없는 걷기 범위입니다.
 - 시각 0은 `origin_head_us`입니다. 시각은 표본 수가 아니라 묶음 머리의 `head_us_start`로 이어야 하고, archive 입력에서는 seq 빈자리가 수 분일 수 있습니다.
@@ -519,18 +519,18 @@ volumes: {certs: {}, pgdata: {}}
 
 ### 7.2 응답 (200, `multipart/form-data`)
 
-요청과 같은 형식이라 같은 해독기를 씁니다. 파트마다 `Content-Disposition: form-data; name="<이름>"`과 `Content-Type`이 있습니다. 첫 파트는 이름 `result`(`application/json`)이고 궤적을 뺀 결과 전부입니다. 이어서 걷기 구간·발마다 궤적 파트 하나(`application/octet-stream`, 이름 `traj-<bout idx>-<side>`, 예 `traj-0-left`, 7.3절 TRJ1)가 옵니다. 궤적을 숫자 글자로 쓰면 1시간 구간에 약 15 MB라 JSON에 넣지 않습니다.
+요청과 같은 형식이라 같은 해독기를 씁니다. 파트마다 `Content-Disposition: form-data; name="<이름>"`과 `Content-Type`이 있습니다. 첫 파트는 이름 `result`(`application/json`)이고 궤적을 뺀 결과 전부입니다. 이어서 걷기 구간·발마다 궤적 파트 하나(`application/octet-stream`, 이름 `traj-<bout idx>-<side>`, 예 `traj-0-right`, 7.3절 TRJ1)가 옵니다. 궤적을 숫자 글자로 쓰면 1시간 구간에 약 15 MB라 JSON에 넣지 않습니다.
 
 ```json
 {
   "c2_version": 1,
   "gaitfusion_version": "1.3.0+gabc1234",
   "status": "complete",
-  "summary": {"n_imu": 359800, "n_range": 358100, "seq_gaps": 3, "sides": ["left"], "sensor_site": "lateral_ankle"},
+  "summary": {"n_imu": 359800, "n_range": 358100, "seq_gaps": 3, "sides": ["right"], "sensor_site": "lateral_ankle"},
   "bouts": [{
-    "start_s": 812.40, "end_s": 871.15, "mode": "fused", "sides": "left",
+    "start_s": 812.40, "end_s": 871.15, "mode": "fused", "sides": "right",
     "quality": {"uwb_accept_ratio": 0.93},
-    "trajectories": [{"side": "left", "part": "traj-0-left"}],
+    "trajectories": [{"side": "right", "part": "traj-0-right"}],
     "strides": [], "turns": [], "steps": [], "windows": [], "events": []
   }]
 }
@@ -630,7 +630,7 @@ REST + JSON, 경로 `/v1/`. 시각은 UTC ISO 8601. 인증은 `Authorization: Be
 공통 규칙:
 - **단위**: SI. 열 이름 끝에 단위(`_m`, `_s`, `_us`, `_ms`, `_hz`). 접미가 없는 비율은 0–1.
 - **NULL은 "계산 못 함" 또는 "아직 모름" 하나의 뜻**입니다. 0으로 대신 쓰지 않습니다. 데이터가 아예 없는 것은 행이 없는 것으로 나타냅니다. 예외: `intake.chunk`의 머리 복사 열(`utc_us_start` 등)은 wire 값을 그대로 담으므로 wire의 뜻(예 `0` = 추정 없음)을 따릅니다. 블록에서 뽑은 조회 열은 이 규칙을 따릅니다(예 `range_age_ms`의 wire 0xFFFF → NULL).
-- **발(`side`)**: `'left'`·`'right'`. 묶음 프레임의 `tag_id` 0 = 왼쪽(T0), 1 = 오른쪽(T1)이 정하고 사람이 입력하지 않습니다. 1-Tag 세트는 T0를 왼쪽 발목에 찹니다.
+- **발(`side`)**: `'left'`·`'right'`. 묶음 프레임의 `tag_id` 0 = 오른쪽(T0), 1 = 왼쪽(T1)이 정하고 사람이 입력하지 않습니다. 1-Tag 세트는 T0를 오른쪽 발목에 찹니다.
 - **선택적인 것은 행으로**: 발마다 생기는 것은 `side` 열이 있는 행이고 찬 발의 행만 생깁니다. 한 표에 `left_*`·`right_*` 열을 두지 않습니다. 예외는 `intake.chunk`의 Tag 자리 두 칸뿐입니다(받기를 행 하나로 끝내려고).
 - **`sides`**: `'left'`·`'right'`·`'both'`. 행에서 다시 셀 수 있지만 조회 조건에 자주 쓰므로 열로 둡니다.
 - **시각**: DB는 `timestamptz`(UTC). 묶음의 µs 정수(`head_us_start`, `utc_us_start`)는 `bigint` 그대로.
@@ -759,7 +759,7 @@ CREATE TABLE intake.chunk (
   dropped_imu_frames integer     NOT NULL,
   status_mask        smallint    NOT NULL,      -- 묶음 안 상태 블록. bit0 system, bit1 health, bit2 survey
   -- Tag 자리 두 칸(펌웨어 한계 = 세트당 2). 받기를 행 하나로 끝내려고 둔 고정 열(공통 규칙의 예외).
-  tag_mask           smallint    NOT NULL,      -- wire 머리 tag_mask. bit0 T0(왼쪽), bit1 T1(오른쪽) 프레임 있음
+  tag_mask           smallint    NOT NULL,      -- wire 머리 tag_mask. bit0 T0(오른쪽), bit1 T1(왼쪽) 프레임 있음
   tag0_mac           macaddr,                   -- 묶음 안 T0의 첫 IMU 프레임. IMU 프레임이 없으면 NULL
   tag0_boot_id       bigint,
   tag1_mac           macaddr,                   -- T1의 첫 IMU 프레임
@@ -894,7 +894,7 @@ CREATE INDEX segment_no_installation ON segment.segment (device_id, geometry_has
 -- 등급: 결과. 구간에 있던 발과 Tag. 발마다 한 행(SG-6). 1-Tag 세트는 한 행.
 CREATE TABLE segment.segment_tag (
   segment_id    bigint      NOT NULL REFERENCES segment.segment(id),
-  side          text        NOT NULL CHECK (side IN ('left','right')),   -- tag_id 0 = left, 1 = right
+  side          text        NOT NULL CHECK (side IN ('left','right')),   -- tag_id 0 = right, 1 = left
   tag_mac       macaddr,                          -- NULL = 이 발은 아직 거리 프레임만(IMU 프레임 없음)
   tag_boot_id   bigint,
   first_seen_at timestamptz NOT NULL,
@@ -1154,7 +1154,7 @@ intake.chunk ↔ segment.segment는 (device_id, head_boot_id, seq 범위)로 이
 
 **M2 구간 (SG)**
 1. 시나리오(가짜 Head, 시계 바꿔 끼움)마다 구간 수, 경계, `closed_reason`, `n_missing_chunks`, `sides`, `segment_tag`가 기대와 같음:
-   보통 2시간 → `max_length`로 2개 · Tag 꺼짐 2분(실시간으로 흘러감) → 앞 구간은 `silence_60s`, 다시 켜진 뒤 새 구간 · 인터넷이 끊긴 동안 Tag 꺼짐 2분(밀린 묶음이 한꺼번에 옴) → `gap_60s` · 재부팅 → `boot_changed` · 옛 부팅의 묶음이 늦게 옴 → 옛 구간만 다시 열리고 새 부팅의 구간은 열린 채 · 왼발 Tag 교체 → `tag_changed` · 중간에 T1 나타남 → 한 구간, `both`, 행 2개 · 배치 변경 → `geometry_changed`, 새 구간의 `installation_id`가 만들 때부터 있음 · 버퍼 넘침 → 빈자리 수 · 프레임 없는 묶음만 → 구간 없음.
+   보통 2시간 → `max_length`로 2개 · Tag 꺼짐 2분(실시간으로 흘러감) → 앞 구간은 `silence_60s`, 다시 켜진 뒤 새 구간 · 인터넷이 끊긴 동안 Tag 꺼짐 2분(밀린 묶음이 한꺼번에 옴) → `gap_60s` · 재부팅 → `boot_changed` · 옛 부팅의 묶음이 늦게 옴 → 옛 구간만 다시 열리고 새 부팅의 구간은 열린 채 · 오른발 Tag(T0) 교체 → `tag_changed` · 중간에 T1 나타남 → 한 구간, `both`, 행 2개 · 배치 변경 → `geometry_changed`, 새 구간의 `installation_id`가 만들 때부터 있음 · 버퍼 넘침 → 빈자리 수 · 프레임 없는 묶음만 → 구간 없음.
 2. 인터넷 5분 끊김(밀렸다 몰아 옴): 구간이 `silence_60s`로 닫혔다가 다시 열리고, 최종으로 닫힌 뒤 `analysis` 작업이 정확히 1개 대기(SG-5, PL-2).
 3. 결정성: 같은 묶음을 새 DB에 다시 넣어 처리하면 구간 표가 같음(id 제외)(SG-10).
 4. `installation`: system 블록마다 행이 생기거나 `last_seen_at`이 바뀌고, 비어 있던 `installation_id`가 채워짐(SG-8).

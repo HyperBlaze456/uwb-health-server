@@ -116,7 +116,7 @@ def system_obj(seq: int, rx: int, *, boot: str = "0badf00d", geometry: str = "de
     o.update(geometry_id=geometry, geometry_source="default" if geometry == "default" else "manual",
              coordinates_surveyed=geometry != "default", position_dimensions=3, slot_ms=10, tag_count=1)  # fmt: skip
     if not old:
-        o["tag_sides"] = ["left"]
+        o["tag_sides"] = ["right"]  # 1-Tag: T0 = 오른발
     o.update(
         module_filter=1, imu_acquisition_hz=100, imu_transport_hz=100, imu_transport="espnow", accel_lsb_per_g=2048,
         gyro_lsb_per_dps=32.8, clock_sync="unavailable_in_at_api",

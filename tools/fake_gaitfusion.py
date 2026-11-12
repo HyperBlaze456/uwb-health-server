@@ -13,7 +13,7 @@
   malformed:<규칙>  ok 응답을 7.2·7.3절 규칙 하나만 어기게 고침(MALFORMED_RULES, 이름 = check_response의 rule)
 
 걷기 구간: IMU 프레임이 있는 묶음이 Head 시각으로 이어진(다음 head_us_start − 앞 = 1초 ± 50 ms) 부분이 10초 이상이면
-하나. 시각축 0 = context.origin_head_us. 발 = 그 부분에서 IMU 프레임이 있는 tag_id(0 왼쪽, 1 오른쪽).
+하나. 시각축 0 = context.origin_head_us. 발 = 그 부분에서 IMU 프레임이 있는 tag_id(0 오른쪽, 1 왼쪽).
 궤적은 발마다 TRJ1 하나, 걷기 구간 ± bout_pad_s를 [0, t_last]로 자름. 값은 결정적인 합성값.
 보폭 줄(strides, gaitfusion.stride/1, gaitfusion service.md 4절과 같은 필드): 발마다 1/STRIDE_HZ초 간격으로 걷기 구간
 안에 들어가는 것만. 오른발은 반 주기 늦게 시작. 값은 합성 궤적과 맞춘 결정적인 값(속도 1.1 m/s, 디딤 절반).
@@ -46,8 +46,9 @@ STEP_US = 1_000_000
 STEP_TOLERANCE_US = 50_000
 DEFAULT_PAD_S = 2.0
 STRIDE_HZ = 0.9
-SIDE_NAMES = ("left", "right")  # tag_id 0, 1
-SIDE_MASK = {"left": 0b01, "right": 0b10, "both": 0b11}
+SIDE_OF_TAG = {0: "right", 1: "left"}  # tag_id 0 = T0 오른쪽, 1 = T1 왼쪽
+FEET = ("left", "right")  # 보고하는 순서. TRJ1 머리 side 값 0, 1(발 부호, tag_id가 아님)
+SIDE_MASK = {"right": 0b01, "left": 0b10, "both": 0b11}  # 발 → tag_mask 비트(bit = 1 << tag_id)
 CONTEXT_KEYS = {"c2_version", "segment_id", "run_id", "origin_head_us", "sides", "anchors", "subject", "params"}
 SUBJECT_KEYS = {"height_m", "leg_length_m", "paretic_side"}
 
@@ -220,7 +221,7 @@ def encode_trj1(side: str, t0_s: float, channels: list[list[float]]) -> bytes:
     n = len(channels[0])
     if len(channels) != len(CHANNELS) or any(len(ch) != n for ch in channels) or n < 1:
         raise ValueError("need 13 channels of the same length >= 1")
-    out = [_TRJ_HEADER.pack(b"TRJ1", SIDE_NAMES.index(side), len(CHANNELS), RATE_HZ, n, 0, t0_s)]
+    out = [_TRJ_HEADER.pack(b"TRJ1", FEET.index(side), len(CHANNELS), RATE_HZ, n, 0, t0_s)]
     out += [struct.pack(f"<{n}f", *ch) for ch in channels]
     data = b"".join(out)
     return data + struct.pack("<I", zlib.crc32(data))
@@ -257,8 +258,7 @@ def synth_strides(start: float, end: float, tag_ids: set[int], uwb_support: floa
     """결정적인 보폭 줄(gaitfusion.stride/1). 지표 목록(contracts/metrics.toml)의 범위 안의 값."""
     period = 1.0 / STRIDE_HZ
     rows = []
-    for tag in sorted(tag_ids):
-        side = SIDE_NAMES[tag]
+    for side in _feet(tag_ids):
         t = start + (period / 2 if side == "right" else 0.0)
         while t + period <= end + 1e-9:
             mid = t + period / 2
@@ -296,8 +296,14 @@ def _walking_runs(chunks: list[wire.Chunk]) -> list[list[wire.Chunk]]:
     return runs
 
 
+def _feet(tag_ids: set[int]) -> list[str]:
+    """tag_id들의 발, 왼발·오른발 순."""
+    feet = {SIDE_OF_TAG[t] for t in tag_ids}
+    return [s for s in FEET if s in feet]
+
+
 def _sides_of(tag_ids: set[int]) -> str:
-    return "both" if tag_ids == {0, 1} else SIDE_NAMES[min(tag_ids)]
+    return "both" if tag_ids == {0, 1} else SIDE_OF_TAG[min(tag_ids)]
 
 
 def _bout(
@@ -316,8 +322,7 @@ def _bout(
     while n > 1 and t0 + (n - 1) / RATE_HZ > t_last:
         n -= 1
     entries, parts = [], []
-    for tag in sorted(tag_ids):
-        side = SIDE_NAMES[tag]
+    for side in _feet(tag_ids):
         name = f"traj-{idx}-{side}"
         entries.append({"side": side, "part": name})
         parts.append(Part(name, "application/octet-stream", encode_trj1(side, t0, synth_channels(side, t0, n, start))))
@@ -372,7 +377,7 @@ def analyze(ctx: dict, chunks: list[wire.Chunk], *, force_bout: bool = False) ->
             "n_imu": sum(f.count for c in chunks for f in c.imu_frames),
             "n_range": sum(len(c.ranges) for c in chunks),
             "seq_gaps": sum(1 for a, b in zip(seqs, seqs[1:], strict=False) if b != a + 1),
-            "sides": [SIDE_NAMES[t] for t in sorted(imu_tags)],
+            "sides": _feet(imu_tags),
             "sensor_site": "lateral_ankle",
         },
         "bouts": bouts,
@@ -489,7 +494,7 @@ def malform(rule: str, ctx: dict, result: dict, parts: list[Part], t_last: float
         case "trj.crc":
             parts = patch_part(p0, lambda d: d[:-1] + bytes([d[-1] ^ 0xFF]))
         case "trj.side":
-            other = 1 - SIDE_NAMES.index(e0["side"])
+            other = 1 - FEET.index(e0["side"])
             parts = patch_part(p0, lambda d: _patch_trj(d, side=other))
         case "trj.time":
             parts = patch_part(p0, lambda d: _patch_trj(d, t0_s=-1.0))

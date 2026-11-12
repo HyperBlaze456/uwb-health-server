@@ -82,7 +82,7 @@ def main() -> None:
     raw = synth_c1.c1_chunks(feet, ranging=("left", "right"), head_boot_id=HEAD_BOOT_ID, head_us0=HEAD_US0)
     anchors = [[float(v) for v in a] + [0.0] for a in synth.DEFAULT_ANCHORS]  # [x, y, z, range_bias_m]
     system = fh.encode_system(head_mac=fh.TEST_DEVICE_MAC, tag_count=2, geometry_id=GEOMETRY_ID, anchors=anchors,
-                              set_members=[*ANCHOR_MACS, synth_c1.TAG_MACS["left"], synth_c1.TAG_MACS["right"]],
+                              set_members=[*ANCHOR_MACS, synth_c1.TAG_MACS[0], synth_c1.TAG_MACS[1]],  # A1–A3, T0, T1
                               surveyed=True)
     chunks = []
     for i, data in enumerate(raw):

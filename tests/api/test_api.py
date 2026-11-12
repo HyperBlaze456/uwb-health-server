@@ -156,13 +156,13 @@ def test_segments_runs_bouts_trajectory(env, api, admin, people, device):
     assert api.get(f"/v1/subjects/{people['A']}/bouts?from=2026-10-25T00:00:00Z", headers=people["b"]).status_code == 404
     bid = bouts[0]["id"]
     t25 = api.get(f"/v1/bouts/{bid}/trajectory", headers=people["a"]).json()["trajectories"][0]
-    t100 = api.get(f"/v1/bouts/{bid}/trajectory?rate=100&side=left", headers=people["a"]).json()["trajectories"][0]
+    t100 = api.get(f"/v1/bouts/{bid}/trajectory?rate=100&side=right", headers=people["a"]).json()["trajectories"][0]
     assert t25["rate_hz"] == 25 and t100["rate_hz"] == 100
     assert t25["n"] == (t100["n"] - 1) // 4 + 1
     for ch in analysis_rules.TRJ_CHANNELS:
         assert t25["channels"][ch] == t100["channels"][ch][::4]
     assert api.get(f"/v1/bouts/{bid}/trajectory", headers=people["b"]).status_code == 404
-    assert api.get(f"/v1/bouts/{bid}/trajectory?side=right", headers=people["a"]).status_code == 404
+    assert api.get(f"/v1/bouts/{bid}/trajectory?side=left", headers=people["a"]).status_code == 404
     # 재분석 요청: 202, 옛 궤적은 지워져 404
     r = api.post(f"/v1/segments/{seg}/reanalyze", headers=admin)
     assert r.status_code == 202 and r.json()["queued"]
@@ -185,7 +185,7 @@ def test_partial_run_visible(env, api, admin, people, device):
     assert (summary["status"], summary["result_status"]) == ("done", "partial")
     run = api.get(f"/v1/runs/{summary['id']}", headers=admin).json()
     assert run["status"] == "done" and run["is_current"] and run["result_status"] == "partial"
-    assert run["bouts"][-1]["trajectory_sides"] == [] and run["bouts"][0]["trajectory_sides"] == ["left"]
+    assert run["bouts"][-1]["trajectory_sides"] == [] and run["bouts"][0]["trajectory_sides"] == ["right"]
     bouts = api.get(f"/v1/subjects/{people['A']}/bouts?from=2026-10-25T00:00:00Z", headers=people["a"]).json()
     assert {b["result_status"] for b in bouts} == {"partial"}
     last = max(bouts, key=lambda b: b["start_at"])

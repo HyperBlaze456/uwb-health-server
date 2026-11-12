@@ -1,8 +1,8 @@
 {
   "made_by": "tests/e2e/data/make_walk_two_feet.py",
-  "gaitfusion_commit": "2c0353168950cd537ea182413bd5fcb61948a198",
+  "gaitfusion_commit": "75d59cbaaa4af8e7fbf4abbf8ee0c8d88ca04fe3-dirty",
   "format": "gzip of C1 record batch (u32 len little-endian + chunk, repeated), chunk_seq ascending",
-  "sha256": "3a471a0fb51730ed1db2eae850085d6be945b350662cbb48a186456911b249c1",
+  "sha256": "32f0782dfa462cab2f86e6eec36681512c22d193218f3ed47c784f866b969c4f",
   "n_chunks": 296,
   "max_chunk_bytes": 7504,
   "device_mac": "e0:72:a1:ac:a8:58",
