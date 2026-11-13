@@ -1,7 +1,7 @@
 # C1 시험 벡터의 판 (SPEC 12절 1번). 펌웨어 저장소 tests/wire_vectors/를 그대로 복사함.
 # 다시 복사할 때는 이 파일도 새로 씀. tests/contract/test_wire_vectors.py가 아래 해시로 파일을 확인함.
 firmware_repo: uwb-firmware
-firmware_commit: d1f3f4d985c39277ebb1b1f52f1ba9f6b4ae7ca8
+firmware_commit: 1d3aa5855a764386b20044424aebe00707fd6a08
 copied_at: 2026-10-29T12:57Z
 wire_md_sha256: 1875472cc157e24a2f12fb0859d26a8376a2f8ba204749cc2f5d1c76c3035055
 files:

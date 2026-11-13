@@ -4,4 +4,19 @@
 .venv/
 __pycache__/
 .pytest_cache/
+.ruff_cache/
+.import_linter_cache/
 /data/
+
+# 학교 보고서 파일(한글)과 받은 사진. 이 컴퓨터에만 둠
+*.hwp
+*.hwpx
+KakaoTalk_Photo_*
+
+# 보고서 조립(report/)에서 저장소에 넣지 않는 것:
+# 학생 이름, 다른 팀이 채운 바탕 양식, 사진, 실험 결과와 모델 응답, 만들어진 그림
+/report/build/authors_local.py
+/report/build/base/
+/report/photos/
+/report/data/
+/report/figures/out/

@@ -1,19 +1,36 @@
 # uwb-health-server
 
-UWB 보행 측정 세트(Head와 앵커 셋, 발목 Tag)가 1초마다 올리는 원본을 받아, 잃지 않고 쌓고, 분석 단위(구간)로 정돈하고, 분석 서비스(gaitfusion)를 불러 걷기 구간과 발 궤적을 남기는 서버입니다. 무엇을 해야 하는지는 [SPEC.md](SPEC.md) 하나에 있습니다. 지금은 1단계(원본 정돈)입니다.
+UWB 보행 측정 세트(Head와 앵커 셋, 발목 Tag)가 1초마다 올리는 원본을 받아, 잃지 않고 쌓고, 분석 단위(구간)로 정돈하고, 분석 서비스(gaitfusion)를 불러 걷기 구간과 발 궤적을 남기는 서버입니다. 무엇을 해야 하는지는 [SPEC.md](SPEC.md) 하나에 있습니다. 1단계(원본 정돈)와 2단계의 지표 규약, 특징 풀기, 일별 값(M7–M9)을 만들었습니다. 2단계의 보고서는 논문 저장소와 명령줄 대화 도구(`tools/ask.py`)까지 있습니다. 단계별 상태는 SPEC 12절과 14.10절에 있습니다.
+
+## 관련 저장소
+
+이 서버는 세 저장소 가운데 하나입니다. 문서와 명령에 나오는 `../gaitfusion`, `../uwb-firmware`는 세 저장소를 한 폴더 아래에 나란히 받았을 때의 경로입니다.
+
+| 저장소 | 내용 |
+|---|---|
+| [uwb-firmware](https://github.com/HyperBlaze456/uwb-firmware) | Head·앵커·Tag 펌웨어. Head가 서버에 올리는 바이트 형식(C1, `docs/wire.md`)과 시험 벡터를 소유 |
+| uwb-health-server(이 저장소) | 원본 받기와 보관, 구간, 분석 호출, 지표와 보고서 |
+| [gaitfusion](https://github.com/HyperBlaze456/gaitfusion) | UWB + IMU 융합과 분석 서비스. 서버가 구간마다 부름(C2) |
+
+```sh
+git clone https://github.com/HyperBlaze456/uwb-firmware.git
+git clone https://github.com/HyperBlaze456/uwb-health-server.git
+git clone https://github.com/HyperBlaze456/gaitfusion.git
+```
 
 ## 빠른 시작 (개발)
 
-Python, 의존성, 실행은 모두 [uv](https://docs.astral.sh/uv/)로 합니다. 버전은 `.python-version`, `pyproject.toml`, `uv.lock`에 고정되어 있습니다.
+필요한 것은 [uv](https://docs.astral.sh/uv/)와 Docker(Compose 포함)입니다. Python, 의존성, 실행은 모두 uv로 합니다. Python 3.14는 uv가 `.python-version`대로 받습니다. 버전은 `.python-version`, `pyproject.toml`, `uv.lock`에 고정되어 있습니다.
 
 ```sh
+cp .env.example .env                                         # 처음 한 번. 개발에서는 값을 그대로 써도 됨
 uv sync                                                      # .venv에 의존성 설치
 docker compose -f compose.yaml -f compose.dev.yaml up -d db  # 시험용 PostgreSQL (localhost:5432)
 uv run pytest                                                # 시험. DB가 없으면 DB 시험은 건너뜀
 uv run lint-imports                                          # import 규칙(SPEC 3.2)
 ```
 
-시험은 `.env`의 비밀번호로 같은 PostgreSQL에 `uwb_test` DB를 새로 만들어 씁니다. 같은 DB 서버에서 시험을 둘 이상 동시에 돌리면 `TEST_DB_NAME=uwb_test_다른이름`으로 DB 이름을 나눕니다. `.env`가 없으면 `cp .env.example .env`부터 합니다.
+시험은 `.env`의 비밀번호로 같은 PostgreSQL에 `uwb_test` DB를 새로 만들어 씁니다. 같은 DB 서버에서 시험을 둘 이상 동시에 돌리면 `TEST_DB_NAME=uwb_test_다른이름`으로 DB 이름을 나눕니다.
 
 이미지를 빌드해 스택 전체를 띄우는 전 구간 시험(`tests/e2e/`)은 켤 때만 돕니다. 각자 다른 compose 프로젝트와 포트를 써서 개발 스택 옆에서 돌고, 끝나면 내립니다.
 
@@ -86,6 +103,23 @@ docker compose exec core python tools/verify_archive.py
 | `unpack_features.py --all \| --since ISO` | 결과 원문이 있는 지난 run마다 `feature` 작업을 넣음(지난 run 채우기, 새 표를 더한 뒤 다시 풀기) | `core_rw` | TL-9 |
 | `resummarize.py --since 날짜 [--device]` | 그 한국 날짜부터 오늘까지 착용 기록이 있는 장치마다 `summary` 작업을 넣음(지표 목록의 `period` 지표나 `names`를 고친 뒤 일별 값 다시 계산) | `core_rw` | TL-11 |
 | `ask.py --subject ID --from ISO --to ISO [--show-context \| --report \| --question 글] [--fake] [--trace-out]` | 착용자·기간의 지표 값을 맥락으로 모델과 묻고 답함(대화 코어). 모델이 논문 저장소를 스스로 찾아 인용. `--show-context`는 키 없이 맥락만, `--fake`는 키 없이 가짜 모델로 전 과정 | `api_rw`(읽기만) | TL-12 |
+| `papers.py add \| build \| check \| search` | 논문 저장소(파일)에 논문을 넣고, 색인을 만들고, 지표 목록의 출처와 맞는지 보고, 대목을 찾음. 저장소 뿌리는 `--root` 또는 `DATA_ROOT/papers` | 없음 | TL-10 |
+| `eval_retrieval.py` | 논문 찾기의 정량 평가. 질의 묶음 `eval/retrieval/queries.toml`로 방식마다 Hit@k와 MRR을 냄 | 없음 | RP-6 |
+| `eval_checks.py` | 보고서 검사의 검출률. 오류를 하나씩 넣은 글(`eval/checks/`)을 검사에 돌림. 모델은 부르지 않음 | 없음 | RP-8 |
+| `eval_report_runs.py run \| summarize \| judge \| make-corpus` | 실제 모델이 쓴 보고서로 검사와 인용을 평가. `--fake`는 키 없이 돎 | `api_rw`(읽기만) | RP-8 |
+
+모델을 부르는 도구는 키를 환경 변수에서 읽습니다. `ask.py`와 `eval_report_runs.py`의 글 쓰는 모델은 `ANTHROPIC_API_KEY`, OpenRouter 임베딩(`papers.py build --embedder openrouter:<모델>`, `eval_retrieval.py`)과 판정 모델(`eval_report_runs.py judge`)은 `OPENROUTER_API_KEY`입니다. 키는 `.env`에만 두고 git에 넣지 않습니다.
+
+## 평가 자료와 보고서 조립 코드
+
+| 위치 | 내용 |
+|---|---|
+| `eval/retrieval/queries.toml` | 논문 찾기 평가의 질의 묶음 |
+| `eval/checks/` | 보고서 검사 평가의 입력. 시연용 착용자(`S-DEMO`)의 맥락 파일과, 오류를 넣은 글 묶음 |
+| `report/build/` | R&E 연구보고서(hwpx)를 조립하는 코드와 본문 글. `build.py`, `build_form.py` |
+| `report/figures/src/` | 보고서 그림을 그리는 코드. `report/figures/icons/`는 Tabler Icons(MIT) |
+
+학생 이름, 바탕 양식 파일, 사진, 실험 결과(`report/data/`), 만들어진 그림(`report/figures/out/`), 한글 파일(`*.hwp`, `*.hwpx`)은 저장소에 넣지 않습니다(`.gitignore`). 그래서 보고서 조립은 그 파일들이 있는 컴퓨터에서만 됩니다. 평가 도구의 결과는 `report/data/`에 쓰입니다.
 
 ## 데이터는 어디에
 

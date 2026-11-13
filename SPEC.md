@@ -11,11 +11,11 @@
 
 | 문서 | 무엇 | 소유 |
 |---|---|---|
-| [wire.md](../uwb-firmware/docs/wire.md) | C1: Head → 서버 바이트 형식, 응답, 검사 규칙, 시험 벡터 | 펌웨어 저장소 |
+| [wire.md](https://github.com/HyperBlaze456/uwb-firmware/blob/main/docs/wire.md) | C1: Head → 서버 바이트 형식, 응답, 검사 규칙, 시험 벡터 | 펌웨어 저장소 |
 | 이 문서 7절 | C2: 서버 → gaitfusion 요청·응답 | 이 저장소 |
 | 이 문서 8절 | C3: 앱 → 서버 REST API | 이 저장소 |
 | 이 문서 14.4절과 `contracts/metrics.toml` | C4: 지표 규약. C2 응답 안의 분석 특징 필드와 서버가 계산하는 지표의 이름·단위·뜻(2단계) | 이 저장소 |
-| [gait-features.md](../gaitfusion/gait-features.md) | 지표를 고른 근거 문헌과 이유. 이름·단위·뜻이 C4와 다르면 C4가 이김 | gaitfusion 저장소 |
+| [gait-features.md](https://github.com/HyperBlaze456/gaitfusion/blob/main/gait-features.md) | 지표를 고른 근거 문헌과 이유. 이름·단위·뜻이 C4와 다르면 C4가 이김 | gaitfusion 저장소 |
 
 ## 1. 목표와 범위
 
@@ -331,7 +331,7 @@ volumes: {certs: {}, pgdata: {}}
 
 ### 6.3 받기 (IN)
 
-- **IN-1 엔드포인트.** `POST /d/v1/chunks` 하나입니다. 요청과 응답의 바이트, 결과 코드, HTTP 상태는 [wire.md](../uwb-firmware/docs/wire.md) "전송"을 그대로 따릅니다.
+- **IN-1 엔드포인트.** `POST /d/v1/chunks` 하나입니다. 요청과 응답의 바이트, 결과 코드, HTTP 상태는 [wire.md](https://github.com/HyperBlaze456/uwb-firmware/blob/main/docs/wire.md) "전송"을 그대로 따릅니다.
 - **IN-2 인증.** `Authorization: Bearer`의 sha256으로 `registry.device`를 찾습니다. 없거나 폐기되었으면 401이고 아무것도 쓰지 않습니다. 요청 안의 값으로 장치를 정하지 않습니다.
 - **IN-3 검사.** 묶음마다 wire.md "서버의 검사" 1–10을 순서대로 하고 처음 실패한 단계의 코드를 씁니다. 해독과 검사는 `pipeline/wire.py` 하나가 합니다. 값을 고쳐서 받지 않습니다.
 - **IN-4 줄 세우기.** 요청 하나 = 트랜잭션 하나이고, 트랜잭션 처음에 장치 잠금 `pg_advisory_xact_lock(2, hashtext(device_id))`를 잡습니다. 같은 장치의 요청이 겹치면 차례로 처리됩니다. INSERT 직전에는 PL-3의 전역 잠금을 잡습니다(잠그는 순서는 늘 장치 → 전역). 전역 잠금은 INSERT부터 커밋까지만이라 1 ms 안팎입니다.
@@ -464,7 +464,7 @@ volumes: {certs: {}, pgdata: {}}
 - **TL-4 `verify_archive.py [--reindex]`.** archive 파일의 sha256을 `archive.range`와 대조합니다. `--reindex`는 파일에서 빠진 행을 다시 만듭니다.
 - **TL-5 `reingest_rejected.py`.** IN-10.
 - **TL-6 `admin.py`.** `create-admin`, `register-device <mac>`(토큰 출력), `rotate-token`, `reanalyze <segment_id>`. API와 같은 store 함수를 씁니다.
-- **TL-7 `import_usb.py`.** 펌웨어의 USB 레코더 기록(Head `range`·`imu_batch`·`system`, [protocol.md](../uwb-firmware/docs/protocol.md))을 1초 묶음으로 바꿔 intake에 보냅니다. Head 전송부가 생기기 전에 실제 기록을 넣는 길입니다. 레코더(`../uwb-firmware/scripts/record_usb.py`)는 줄마다 앞에 PC 단조 시각 µs와 TAB을 붙이며, 맨 JSON 줄도 받습니다. 묶음 나누기는 Head 규칙과 같습니다: 프레임도 블록도 없는 초는 묶음을 만들지 않고 seq도 쓰지 않음, 배치(`geometry_id`)가 바뀌면 그 이벤트에서 닫음, system 블록은 부팅 안 첫 번·내용이 바뀔 때·10분마다. 시각은 `--utc-start`(기록 첫 줄의 UTC, 시간대 필수)와 줄 앞 PC 시각으로 맞춥니다(부팅마다 PC 시각 − `head_rx_us`의 최솟값). 레코더가 포트를 열 때 보드 버퍼에 남아 있던 옛 줄이 있어도 시각이 밀리지 않습니다. 예전 펌웨어의 `system`(`device_id`·`set_members`가 없음)도 받고, 이때 `set_members`는 0입니다. health·survey 블록은 만들지 않습니다. 같은 파일과 같은 `--utc-start`는 같은 바이트가 되어, 다시 보내면 `duplicate`입니다. 보내기 전에 묶음마다 `pipeline/wire.py`의 검사기를 돌리고, `--dry-run`은 거기까지만 합니다. 자세한 규칙은 도구의 docstring에 있습니다.
+- **TL-7 `import_usb.py`.** 펌웨어의 USB 레코더 기록(Head `range`·`imu_batch`·`system`, [protocol.md](https://github.com/HyperBlaze456/uwb-firmware/blob/main/docs/protocol.md))을 1초 묶음으로 바꿔 intake에 보냅니다. Head 전송부가 생기기 전에 실제 기록을 넣는 길입니다. 레코더(`../uwb-firmware/scripts/record_usb.py`)는 줄마다 앞에 PC 단조 시각 µs와 TAB을 붙이며, 맨 JSON 줄도 받습니다. 묶음 나누기는 Head 규칙과 같습니다: 프레임도 블록도 없는 초는 묶음을 만들지 않고 seq도 쓰지 않음, 배치(`geometry_id`)가 바뀌면 그 이벤트에서 닫음, system 블록은 부팅 안 첫 번·내용이 바뀔 때·10분마다. 시각은 `--utc-start`(기록 첫 줄의 UTC, 시간대 필수)와 줄 앞 PC 시각으로 맞춥니다(부팅마다 PC 시각 − `head_rx_us`의 최솟값). 레코더가 포트를 열 때 보드 버퍼에 남아 있던 옛 줄이 있어도 시각이 밀리지 않습니다. 예전 펌웨어의 `system`(`device_id`·`set_members`가 없음)도 받고, 이때 `set_members`는 0입니다. health·survey 블록은 만들지 않습니다. 같은 파일과 같은 `--utc-start`는 같은 바이트가 되어, 다시 보내면 `duplicate`입니다. 보내기 전에 묶음마다 `pipeline/wire.py`의 검사기를 돌리고, `--dry-run`은 거기까지만 합니다. 자세한 규칙은 도구의 docstring에 있습니다.
 - **TL-8 `bench.py`.** 9절의 속도를 재는 부하 도구입니다. 장치 N대로 초당 1요청씩 보내고, PL-5 로그에서 p95를 셉니다.
 
 도구의 DB 역할: `reindex_raw.py`·`reingest_rejected.py`는 `intake_rw`, `verify_archive.py`는 `core_rw`(`--reindex`의 INSERT 포함), `admin.py`는 `api_rw`입니다. `fake_head.py`·`fake_gaitfusion.py`·`import_usb.py`·`bench.py`는 DB에 접속하지 않고 HTTP만 씁니다. 접속 정보는 4.3절의 `DB_*`입니다.
@@ -1301,7 +1301,7 @@ Head ─▶ intake ─▶ segment ─▶ analysis ──C2──▶ gaitfusion (
 
 지표 목록 파일은 이 저장소에 둡니다. gaitfusion 저장소는 이 파일을 복사해 자기 출력을 검사하는 데 쓰고, 복사한 커밋을 적어 둡니다. 어느 쪽이 먼저 바꿔도 됩니다: gaitfusion이 목록에 없는 필드를 먼저 내면 서버는 받아 두고(MC-4), 목록에 항목이 생긴 때부터 풀이에 씁니다.
 
-- **MC-1 지표 목록.** `contracts/metrics.toml` 하나가 뜻의 기준입니다. 풀이에 쓰는 모든 값(gaitfusion이 내는 필드, 서버가 기간에 대해 계산하는 값)이 한 항목씩 있습니다. 일별 값, 보고서의 지표 값, 앱에 보이는 이름과 단위, 논문과의 연결이 모두 여기서 나옵니다. [gait-features.md](../gaitfusion/gait-features.md)는 근거 문헌과 고른 이유를 설명하는 글로 남고, 이름·단위·뜻이 다르면 지표 목록이 이깁니다.
+- **MC-1 지표 목록.** `contracts/metrics.toml` 하나가 뜻의 기준입니다. 풀이에 쓰는 모든 값(gaitfusion이 내는 필드, 서버가 기간에 대해 계산하는 값)이 한 항목씩 있습니다. 일별 값, 보고서의 지표 값, 앱에 보이는 이름과 단위, 논문과의 연결이 모두 여기서 나옵니다. [gait-features.md](https://github.com/HyperBlaze456/gaitfusion/blob/main/gait-features.md)는 근거 문헌과 고른 이유를 설명하는 글로 남고, 이름·단위·뜻이 다르면 지표 목록이 이깁니다.
 
 | 항목의 키 | 내용 |
 |---|---|
