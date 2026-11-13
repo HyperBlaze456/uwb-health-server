@@ -1,0 +1,1 @@
+Icons: Tabler Icons 3.19.0 (outline), MIT License, https://github.com/tabler/tabler-icons
