@@ -113,7 +113,8 @@ def test_baseline_with_seven_or_more_sufficient_days(env, world):
           (s, DAY1 - timedelta(days=40)))  # 30일 밖  # fmt: skip
     ctx = chat.load_context(env.conn("api"), metrics.load(), s, at(DAY1, 0), at(DAY3, 0))
     by = {v["metric"]: v for v in ctx["values"] if v["side"] is None}
-    assert by["period.wear_time_s"]["baseline"] == {"median": 3600.0, "days": 8, "change": pytest.approx(5400.0)}
+    assert by["period.wear_time_s"]["baseline"] == {"median": 3600.0, "days": 8, "change": pytest.approx(5400.0),
+                                                    "direction": "higher"}  # fmt: skip
     assert "baseline" not in by["period.walking_time_s"]
     assert "baseline" not in by["period.bout_count"]
 

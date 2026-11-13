@@ -2,7 +2,7 @@
 
     uv run python tools/papers.py add --key K --title T --authors "Kim A; Lee B" --year 2017 \\
         [--doi D] [--use "..."] --text FILE.txt [--source FILE.pdf] [--replace]
-    uv run python tools/papers.py build [--embedder NAME]
+    uv run python tools/papers.py build [--embedder NAME] [--embed-cache DIR]
     uv run python tools/papers.py check [--catalog contracts/metrics.toml]
     uv run python tools/papers.py search --query "..." [--keys a2017,b2020] [--method hybrid|bm25|vector] [-k 3]
 
@@ -10,8 +10,10 @@ add:    논문 하나를 목록에 넣고, 원문(--source)을 source/<key>.<확
         PDF에서 글을 뽑는 일은 이 도구가 하지 않습니다. 사람이 평문 파일(UTF-8)을 따로 만들어 --text로 줍니다
         (예: pdftotext가 낸 파일. 쪽 나눔 문자 \\f가 있으면 대목에 쪽 번호가 붙음). 대목은 빈 줄로 나뉜 문단입니다.
         이미 있는 key는 --replace 없이는 거절합니다. key 꼴: <첫 저자 성 소문자><연도>[글자], 예 schlachetzki2017.
-build:  모든 대목으로 색인을 다시 만듭니다. 대목을 바꾼 뒤(add) 꼭 돌립니다. 지금 벡터 함수는
-        글자 n-gram 해시 대역(뜻을 아는 모델이 아님)뿐입니다.
+build:  모든 대목으로 색인을 다시 만듭니다. 대목을 바꾼 뒤(add) 꼭 돌립니다. 기본 벡터 함수는
+        글자 n-gram 해시 대역(뜻을 아는 모델이 아님)입니다. --embedder openrouter:<모델>은 OpenRouter의
+        임베딩 API(환경 변수 OPENROUTER_API_KEY 필요)이고, 그 색인으로 찾을 때도 질문마다 API를 부릅니다.
+        --embed-cache를 주면 이미 센 대목을 다시 보내지 않습니다(OpenRouter만).
 check:  지표 목록의 모든 sources key가 논문 목록에 있는지, 논문마다 대목과 원문 파일이 있는지,
         색인이 있고 지금 대목과 맞는지 봅니다.
 search: 질문에 맞는 대목을 보입니다. --keys를 주면 그 논문 안에서만, 주지 않으면 모든 논문에서 찾습니다.
@@ -45,7 +47,7 @@ def cmd_add(root: Path, a: argparse.Namespace) -> int:
 
 
 def cmd_build(root: Path, a: argparse.Namespace) -> int:
-    e = papers.embedder_by_name(a.embedder)
+    e = papers.embedder_by_name(a.embedder, cache_dir=Path(a.embed_cache) if a.embed_cache else None)
     n = papers.build_index(root, e)
     print(f"index built: {n} passages, embedder {e.name}")
     return 0
@@ -100,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
     s.set_defaults(func=cmd_add)
 
     s = sub.add_parser("build", help="rebuild the search index from all passages")
-    s.add_argument("--embedder", help="embedder name (default: built-in ngram stand-in)")
+    s.add_argument("--embedder", help="embedder name (default: built-in ngram stand-in; e.g. openrouter:<model>)")
+    s.add_argument("--embed-cache", help="vector cache directory for API embedders (e.g. report/data/cache)")
     s.set_defaults(func=cmd_build)
 
     s = sub.add_parser("check", help="check the store against the metric catalog")

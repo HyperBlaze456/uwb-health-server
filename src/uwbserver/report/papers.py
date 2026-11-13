@@ -11,22 +11,27 @@ DB가 아니라 파일입니다. 뿌리(<data root>/papers/) 아래:
 순수 계산(대목 나누기, 대신 쓰는 벡터 함수, 유사도와 순위, 단어 맞춤 BM25, 순위 합치기)과 파일 읽고 쓰기를 한 파일에 두되
 나눠 둡니다. 순수 부분은 파일을 모르므로 따로 단위 시험합니다.
 
-대목을 수치 벡터로 바꾸는 함수(Embedder)는 바꿔 끼웁니다. 진짜 모델은 아직 고르지 않았고(SPEC 14.10 순서 15),
-지금 든 것은 네트워크 없이 도는 글자 n-gram 해시(NgramEmbedder)뿐입니다. 뜻을 아는 모델이 아니라
-시험과 오프라인용 대역입니다.
+대목을 수치 벡터로 바꾸는 함수(Embedder)는 바꿔 끼웁니다. 기본은 네트워크 없이 도는 글자 n-gram 해시
+(NgramEmbedder)입니다. 뜻을 아는 모델이 아니라 시험과 오프라인용 대역입니다. 뜻을 아는 모델은 선택 사항으로 둘이
+있습니다: OpenRouterEmbedder(OpenRouter의 임베딩 API, 키 필요)와 FastEmbedEmbedder(이 PC에서 도는 작은 모델,
+선택 의존성 묶음 embed가 있을 때만).
 """
 
 import hashlib
 import json
 import math
+import os
 import re
 import sys
+import time
 import tomllib
 from array import array
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
+
+import httpx
 
 from uwbserver.pipeline import files, settings
 
@@ -127,17 +132,236 @@ class NgramEmbedder:
         return [self._one(t) if t.strip() else [0.0] * self.dim for t in texts]
 
 
+def embed_queries(embedder: Embedder, texts: list[str]) -> list[list[float]]:
+    """질문 쪽 벡터. 벡터 함수에 embed_queries가 있으면 그것을, 없으면 대목과 같은 함수를 씁니다.
+
+    질문과 대목을 다르게 바꾸는 모델(예: bge는 질문 앞에 지시문을 붙임)은 embed_queries를 둡니다.
+    """
+    f = getattr(embedder, "embed_queries", None)
+    return f(texts) if f is not None else embedder(texts)
+
+
+EMBED_GROUP_HINT = "install the optional group: uv sync --group embed (or run with: uv run --group embed ...)"
+# 모델 → (dim, 질문 앞에 붙이는 지시문). 지시문은 모델 카드가 정한 글 그대로입니다.
+# bge v1.5 카드: 짧은 질문으로 대목을 찾을 때는 질문에만 지시문을 붙이고 대목에는 붙이지 않음.
+# fastembed의 query_embed는 bge에 지시문을 붙이지 않으므로(0.9.1 확인) 여기서 붙입니다.
+FASTEMBED_MODELS: dict[str, tuple[int, str]] = {
+    "BAAI/bge-small-en-v1.5": (384, "Represent this sentence for searching relevant passages: "),
+}
+
+
+class FastEmbedEmbedder:
+    """뜻을 아는 벡터 함수(선택 사항): fastembed로 이 PC에서 도는 문장 임베딩 모델.
+
+    fastembed는 선택 의존성 묶음 embed에만 있고, 처음 벡터를 셀 때 import합니다. 없으면 PaperStoreError.
+    모델 파일은 처음 한 번 내려받아 fastembed의 캐시(FASTEMBED_CACHE_PATH, 없으면 임시 폴더)에 둡니다.
+    대목은 그대로, 질문은 모델의 지시문을 붙여 바꿉니다(embed_queries).
+    """
+
+    __slots__ = ("model", "dim", "query_prefix", "_model")
+
+    def __init__(self, model: str = "BAAI/bge-small-en-v1.5") -> None:
+        if model not in FASTEMBED_MODELS:
+            raise PaperStoreError(f"unknown fastembed model {model!r} (known: {', '.join(FASTEMBED_MODELS)})")
+        self.model = model
+        self.dim, self.query_prefix = FASTEMBED_MODELS[model]
+        self._model = None
+
+    @property
+    def name(self) -> str:
+        return f"fastembed:{self.model}"
+
+    def _load(self):
+        if self._model is None:
+            try:
+                from fastembed import TextEmbedding
+            except ImportError:
+                raise PaperStoreError(f"embedder {self.name} needs the fastembed package; {EMBED_GROUP_HINT}") from None
+            self._model = TextEmbedding(self.model)
+        return self._model
+
+    def _embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        return [[float(x) for x in v] for v in self._load().embed(texts)]
+
+    def __call__(self, texts: list[str]) -> list[list[float]]:
+        return self._embed(texts)
+
+    def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        return self._embed([self.query_prefix + t for t in texts])
+
+
+class VectorCache:
+    """보낸 글 → 벡터의 디스크 캐시. 같은 글을 바깥 API로 두 번 보내지 않으려고 둡니다.
+
+    키 = sha256(모델 이름 + NUL + 보낸 글 그대로). 폴더 아래 모델마다 두 파일을 덧붙여 씁니다:
+    <모델>.f32(행마다 dim개의 float32)와 <모델>.keys(행마다 키 한 줄). 키 파일의 n번째 줄이 벡터 파일의 n번째 행입니다.
+    벡터를 먼저, 키를 나중에 쓰므로 중간에 끊기면 키가 없는 꼬리 행이 남을 수 있습니다. 읽을 때 두 파일의 행 수가
+    다르면 짧은 쪽에 맞춰 두 파일을 자릅니다. 캐시이므로 지워도 다시 셀 수 있습니다.
+    """
+
+    def __init__(self, directory: Path, model: str, dim: int) -> None:
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", model)
+        self.model, self.dim = model, dim
+        self._vec_path = directory / f"{safe}.f32"
+        self._key_path = directory / f"{safe}.keys"
+        self._rows: dict[str, int] = {}  # 키 → 행 번호
+        self._n = 0  # 파일의 행 수
+        self._data = array("f")
+        if self._key_path.exists() and self._vec_path.exists():
+            keys = self._key_path.read_text(encoding="ascii").split()
+            data = _unpack(self._vec_path.read_bytes())
+            n = min(len(keys), len(data) // dim)
+            if len(keys) != n or len(data) != n * dim:
+                with self._vec_path.open("r+b") as f:
+                    f.truncate(n * dim * 4)
+                files.write_atomic_file(self._key_path, "".join(f"{k}\n" for k in keys[:n]).encode("ascii"))
+            self._rows = {k: i for i, k in enumerate(keys[:n])}
+            self._n = n
+            self._data = data[: n * dim]
+
+    def key(self, text: str) -> str:
+        return hashlib.sha256(f"{self.model}\x00{text}".encode()).hexdigest()
+
+    def get(self, text: str) -> list[float] | None:
+        i = self._rows.get(self.key(text))
+        return None if i is None else list(self._data[i * self.dim : (i + 1) * self.dim])
+
+    def put(self, texts: Sequence[str], vectors: Sequence[Sequence[float]]) -> None:
+        new: dict[str, Sequence[float]] = {}  # 같은 묶음 안에 같은 글이 두 번 있어도 한 행만
+        for t, v in zip(texts, vectors, strict=True):
+            k = self.key(t)
+            if k not in self._rows and k not in new:
+                new[k] = v
+        if not new:
+            return
+        self._vec_path.parent.mkdir(parents=True, exist_ok=True)
+        # 지난번에 키를 쓰기 전에 끊겼으면 키 없는 꼬리 행을 잘라 낸 뒤 덧붙입니다.
+        with self._vec_path.open("ab") as f:
+            f.truncate(self._n * self.dim * 4)
+            f.write(_pack([list(v) for v in new.values()]))
+        with self._key_path.open("a", encoding="ascii") as f:
+            f.write("".join(f"{k}\n" for k in new))
+        for k, v in new.items():
+            self._rows[k] = self._n
+            self._n += 1
+            self._data.extend(v)
+
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/embeddings"
+OPENROUTER_KEY_ENV = "OPENROUTER_API_KEY"
+# 모델 id → dim. OpenRouter 목록(GET /api/v1/embeddings/models)에서 2026-11-12에 확인한 것만 둡니다.
+# OpenAI 임베딩은 질문과 문서를 구분하지 않으므로 질문도 같은 함수로 바꿉니다(embed_queries 없음).
+OPENROUTER_MODELS: dict[str, int] = {"openai/text-embedding-3-large": 3072, "openai/text-embedding-3-small": 1536}
+OPENROUTER_BATCH = 64
+OPENROUTER_RETRIES = 3  # 429·5xx·연결 실패에서 다시 보내는 횟수(1, 2, 4초 기다림)
+
+
+class OpenRouterEmbedder:
+    """뜻을 아는 벡터 함수(바깥 API): OpenRouter의 임베딩 엔드포인트(POST /api/v1/embeddings).
+
+    키는 처음 보낼 때 환경 변수 OPENROUTER_API_KEY에서 읽고, 없으면 PaperStoreError. 한 요청에 글 여러 개(64개까지)를
+    보냅니다. 429와 5xx, 연결 실패는 짧게 몇 번 다시 보내고, 그래도 안 되면 PaperStoreError.
+    보내는 것은 논문 대목과 검색 질문뿐이고, 선택 헤더(HTTP-Referer, X-Title)는 보내지 않습니다.
+    cache_dir을 주면 VectorCache로 이미 센 글을 다시 보내지 않습니다. transport는 시험에서 가짜 전송을 끼우는 자리입니다.
+    """
+
+    def __init__(
+        self,
+        model: str = "openai/text-embedding-3-large",
+        *,
+        cache_dir: Path | None = None,
+        transport: httpx.BaseTransport | None = None,
+        timeout_s: float = 60.0,
+        retry_wait_s: float = 1.0,
+    ) -> None:
+        if model not in OPENROUTER_MODELS:
+            raise PaperStoreError(
+                f"unknown OpenRouter embedding model {model!r} (known: {', '.join(OPENROUTER_MODELS)})"
+            )
+        self.model = model
+        self.dim = OPENROUTER_MODELS[model]
+        self.cache = VectorCache(cache_dir, self.name, self.dim) if cache_dir is not None else None
+        self._transport = transport
+        self._timeout_s = timeout_s
+        self._retry_wait_s = retry_wait_s
+        self.requests = 0  # 실제로 보낸 요청 수(재시도 포함). 캐시가 듣는지 볼 때 씀
+
+    @property
+    def name(self) -> str:
+        return f"openrouter:{self.model}"
+
+    def _post(self, client: httpx.Client, texts: list[str]) -> list[list[float]]:
+        last = ""
+        for attempt in range(OPENROUTER_RETRIES + 1):
+            if attempt:
+                time.sleep(self._retry_wait_s * 2 ** (attempt - 1))
+            self.requests += 1
+            try:
+                r = client.post(OPENROUTER_URL, json={"model": self.model, "input": texts, "encoding_format": "float"})
+            except httpx.TransportError as e:
+                last = f"{type(e).__name__}"
+                continue
+            if r.status_code == 429 or r.status_code >= 500:
+                last = f"HTTP {r.status_code}"
+                continue
+            if r.status_code != 200:
+                raise PaperStoreError(f"embedder {self.name}: HTTP {r.status_code}: {r.text[:300]}")
+            body = r.json()
+            if "error" in body:
+                raise PaperStoreError(f"embedder {self.name}: {str(body['error'])[:300]}")
+            rows = sorted(body["data"], key=lambda d: d["index"])
+            vectors = [list(map(float, d["embedding"])) for d in rows]
+            if len(vectors) != len(texts) or any(len(v) != self.dim for v in vectors):
+                raise PaperStoreError(f"embedder {self.name} returned the wrong shape")
+            return vectors
+        raise PaperStoreError(f"embedder {self.name}: gave up after {OPENROUTER_RETRIES + 1} tries ({last})")
+
+    def __call__(self, texts: list[str]) -> list[list[float]]:
+        out: list[list[float] | None] = [self.cache.get(t) if self.cache else None for t in texts]
+        todo = [i for i, v in enumerate(out) if v is None]
+        if not todo:
+            return out  # type: ignore[return-value]
+        key = os.environ.get(OPENROUTER_KEY_ENV)
+        if not key:
+            raise PaperStoreError(f"embedder {self.name} needs the environment variable {OPENROUTER_KEY_ENV}")
+        headers = {"Authorization": f"Bearer {key}"}
+        with httpx.Client(headers=headers, timeout=self._timeout_s, transport=self._transport) as client:
+            for s in range(0, len(todo), OPENROUTER_BATCH):
+                part = todo[s : s + OPENROUTER_BATCH]
+                vectors = self._post(client, [texts[i] for i in part])
+                if self.cache:
+                    self.cache.put([texts[i] for i in part], vectors)
+                for i, v in zip(part, vectors, strict=True):
+                    out[i] = v
+        return out  # type: ignore[return-value]
+
+
 _NGRAM_NAME = re.compile(r"^ngram(\d+)-hash(\d+)-v1$")
+_FASTEMBED_PREFIX = "fastembed:"
+_OPENROUTER_PREFIX = "openrouter:"
 
 
-def embedder_by_name(name: str | None) -> Embedder:
-    """이름으로 벡터 함수를 고릅니다. None이면 기본(NgramEmbedder()). 지금은 n-gram 대역만 있습니다."""
+def embedder_by_name(name: str | None, *, cache_dir: Path | None = None) -> Embedder:
+    """이름으로 벡터 함수를 고릅니다. None이면 기본(NgramEmbedder()).
+
+    ngram<n>-hash<dim>-v1 = 글자 n-gram 대역, fastembed:<모델> = FastEmbedEmbedder(선택 사항, 이 PC),
+    openrouter:<모델> = OpenRouterEmbedder(바깥 API, 키 필요). cache_dir은 OpenRouter에만 씁니다.
+    """
     if name is None:
         return NgramEmbedder()
     m = _NGRAM_NAME.match(name)
     if m:
         return NgramEmbedder(dim=int(m.group(2)), n=int(m.group(1)))
-    raise PaperStoreError(f"unknown embedder {name!r} (only the built-in ngram stand-in exists for now)")
+    if name.startswith(_FASTEMBED_PREFIX):
+        return FastEmbedEmbedder(name.removeprefix(_FASTEMBED_PREFIX))
+    if name.startswith(_OPENROUTER_PREFIX):
+        return OpenRouterEmbedder(name.removeprefix(_OPENROUTER_PREFIX), cache_dir=cache_dir)
+    raise PaperStoreError(
+        f"unknown embedder {name!r} (ngram<n>-hash<dim>-v1, fastembed:<model> with one of {', '.join(FASTEMBED_MODELS)}, "
+        f"or openrouter:<model> with one of {', '.join(OPENROUTER_MODELS)})"
+    )
 
 
 def cosine(a: Sequence[float], b: Sequence[float]) -> float:
@@ -382,6 +606,17 @@ def _unpack(data: bytes) -> array:
     return a
 
 
+def _embed_passages(passages: Sequence[Passage], embedder: Embedder) -> list[list[float]]:
+    vectors: list[list[float]] = []
+    for i in range(0, len(passages), EMBED_BATCH):
+        batch = [p.text for p in passages[i : i + EMBED_BATCH]]
+        out = embedder(batch)
+        if len(out) != len(batch) or any(len(v) != embedder.dim for v in out):
+            raise PaperStoreError(f"embedder {embedder.name} returned the wrong shape")
+        vectors += out
+    return vectors
+
+
 def build_index(root: Path, embedder: Embedder) -> int:
     """목록의 모든 논문 대목으로 색인을 (다시) 만듭니다. 대목 수를 돌려줍니다.
 
@@ -390,14 +625,7 @@ def build_index(root: Path, embedder: Embedder) -> int:
     """
     keys = list(read_papers(root))
     passages = [p for key in keys for p in read_passages(root, key)]
-    vectors: list[list[float]] = []
-    for i in range(0, len(passages), EMBED_BATCH):
-        batch = [p.text for p in passages[i : i + EMBED_BATCH]]
-        out = embedder(batch)
-        if len(out) != len(batch) or any(len(v) != embedder.dim for v in out):
-            raise PaperStoreError(f"embedder {embedder.name} returned the wrong shape")
-        vectors += out
-    data = _pack(vectors)
+    data = _pack(_embed_passages(passages, embedder))
     meta = {
         "format": INDEX_FORMAT,
         "embedder": embedder.name,
@@ -453,7 +681,7 @@ class Index:
 
     def _vector_rank(self, query: str, pos: list[int]) -> list[tuple[int, float]]:
         e = self.embedder if self.embedder is not None else embedder_by_name(self.embedder_name)
-        q = e([query])[0]
+        q = embed_queries(e, [query])[0]
         if len(q) != self.dim:
             raise PaperStoreError(f"embedder {e.name} returned the wrong shape")
         rows = [self.vectors[i * self.dim : (i + 1) * self.dim] for i in pos]
@@ -511,6 +739,15 @@ def load_index(root: Path, embedder: Embedder | None) -> Index:
         raise IndexProblem("stale_index", "index passage ids differ from the passages files; run build")
     bm25 = Bm25.build([p.text for p in passages])
     return Index(meta["embedder"], meta["dim"], tuple(keys), passages, _unpack(data), bm25, embedder)
+
+
+def index_in_memory(root: Path, embedder: Embedder) -> Index:
+    """디스크의 색인을 읽거나 쓰지 않고, 목록의 모든 대목으로 메모리에 색인을 만듭니다(평가 도구에서 벡터 함수를 견줄 때)."""
+    keys = list(read_papers(root))
+    passages = [p for key in keys for p in read_passages(root, key)]
+    vectors = _unpack(_pack(_embed_passages(passages, embedder)))
+    bm25 = Bm25.build([p.text for p in passages])
+    return Index(embedder.name, embedder.dim, tuple(keys), passages, vectors, bm25, embedder)
 
 
 def search(

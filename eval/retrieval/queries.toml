@@ -1,0 +1,577 @@
+# 논문 찾기 평가의 질의 묶음 (SPEC RP-6). 읽는 도구: tools/eval_retrieval.py
+#
+# 묶음 두 개:
+# - metric: contracts/metrics.toml에서 sources가 비지 않은 지표마다 질문 하나(27개). 지표의 label과 meaning을 보고
+#   "이 지표가 임상적으로 무엇을 뜻하는가, 무엇과 관련되는가"를 영어로 썼습니다. 정답(relevant)은 그 지표의 sources
+#   가운데 논문 저장소에 있는 key입니다(2026-11-12 기준 모두 있음). 질문을 쓸 때 정답 논문의 본문은 보지 않았습니다.
+#   지표 → 논문 짝은 검색 시스템과 무관하게 ../gaitfusion/gait-features.md에서 사람이 정한 것입니다.
+# - known_item: 논문 52편마다 질문 하나. 그 논문의 첫 대목들(제목과 초록)을 읽고 그 논문이 답하는 물음(방법이나 결과)을
+#   영어로 썼습니다. 제목에만 나오는 드문 낱말, 저자 이름, 고유 약어(자료·과제·기기 이름)는 쓰지 않고 뜻을 풀어 썼습니다.
+#   정답은 그 논문 key 하나입니다.
+#
+# 항목: id, group, query, relevant(논문 key 목록), how(만든 방법 한 줄).
+#
+# 한계:
+# - 정답이 아닌 논문도 실제로는 질문과 관련될 수 있습니다(특히 metric 묶음: 보행 속도나 변동을 다룬 논문이 여럿).
+#   그런 논문이 먼저 나오면 틀린 것으로 세므로 적중률은 실제 쓸모보다 낮게 나옵니다.
+# - 질문은 언어 모델(Claude)이 썼습니다. 사람이 쓴 질문이나 보고서 모델이 실제로 만드는 질문과 말씨가 다를 수 있습니다.
+# - known_item 질문은 초록을 보고 썼으므로 초록 대목과 낱말이 일부 겹칩니다. 드문 낱말은 풀어 썼지만 흔한 낱말
+#   (Parkinson's disease, stroke, falls 등)은 그대로라 단어 맞춤(BM25)에 조금 유리할 수 있습니다.
+# - 질문마다 하나씩이고 수가 적어(79개) 방식 사이의 작은 차이는 우연일 수 있습니다.
+#
+# 이 파일을 고치면 결과(report/data/rag_retrieval.json의 queries_sha256)가 달라집니다. 결과를 보고 질문이나 정답을
+# 고치지 않습니다.
+
+[[query]]
+id = "metric:stride.length_m"
+group = "metric"
+query = "What does a shorter stride length indicate about a person's health or disease?"
+relevant = ["schlachetzki2017", "dias2023"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:stride.speed_mps"
+group = "metric"
+query = "What does walking speed measured over each stride tell clinicians about health and functional decline?"
+relevant = ["schlachetzki2017", "ema2023"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:stride.clearance_m"
+group = "metric"
+query = "How is reduced foot clearance during the swing of a step related to tripping and falls?"
+relevant = ["schlachetzki2017", "ogata2022"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:stride.swing_s"
+group = "metric"
+query = "What is the clinical meaning of swing time, the time the foot is in the air during a stride?"
+relevant = ["schlachetzki2017", "shah2020"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:stride.stance_s"
+group = "metric"
+query = "What does a longer stance time, when the foot stays on the ground, mean in people with walking problems?"
+relevant = ["schlachetzki2017"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:stride.stance_ratio"
+group = "metric"
+query = "What does the proportion of the gait cycle spent in stance phase indicate clinically?"
+relevant = ["schlachetzki2017"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.wear_time_s"
+group = "metric"
+query = "How much daily wear time of a body-worn sensor is needed for a valid measurement of walking in daily life?"
+relevant = ["buekers2025"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.walking_time_s"
+group = "metric"
+query = "What does the total daily time spent walking, measured by a wearable sensor, indicate about health?"
+relevant = ["yarnall2026"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.bout_count"
+group = "metric"
+query = "What does the number of walking bouts per day in free-living conditions reveal about physical activity and disease?"
+relevant = ["yarnall2026", "deldin2019a"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.bout_duration_max_s"
+group = "metric"
+query = "What does the length of the longest continuous walk in daily life tell about a person's mobility?"
+relevant = ["deldin2019a"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.stride_count"
+group = "metric"
+query = "How is the daily number of strides or steps taken during walking related to clinical outcomes?"
+relevant = ["yarnall2026"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.bout_duration_median_s"
+group = "metric"
+query = "What does the typical duration of walking bouts in everyday life indicate about mobility?"
+relevant = ["deldin2019a", "yarnall2026"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.bout_duration_p90_s"
+group = "metric"
+query = "Is the distribution of walking bout lengths in daily living different between patients and healthy people?"
+relevant = ["deldin2019a", "yarnall2026"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.walking_share_over_60s"
+group = "metric"
+query = "What does the proportion of walking time spent in long bouts lasting more than one minute indicate?"
+relevant = ["deldin2019a"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.speed_median_mps"
+group = "metric"
+query = "What is the clinical meaning of usual walking speed measured in daily life with wearable sensors?"
+relevant = ["schlachetzki2017", "yarnall2026", "takayanagi2019"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.speed_p95_mps"
+group = "metric"
+query = "What does the fastest walking speed reached in daily life, near the top of a person's range, indicate as a clinical outcome?"
+relevant = ["ema2023"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.speed_10_30s_median_mps"
+group = "metric"
+query = "How does walking speed in short walking bouts of 10 to 30 seconds in daily life differ between patients and controls?"
+relevant = ["deldin2016", "yarnall2026"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.speed_30_60s_median_mps"
+group = "metric"
+query = "Does walking speed in medium-length bouts of 30 to 60 seconds in daily life relate to disease severity?"
+relevant = ["deldin2016", "yarnall2026", "eckert2026"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.speed_over_60s_median_mps"
+group = "metric"
+query = "What does walking speed during long walks of more than a minute in daily life show compared with tests in the clinic?"
+relevant = ["deldin2016", "yarnall2026"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.stride_length_median_m"
+group = "metric"
+query = "What does the median stride length during everyday walking tell about gait impairment?"
+relevant = ["schlachetzki2017", "dias2023"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.cadence_median_spm"
+group = "metric"
+query = "What is the clinical meaning of cadence, the number of steps per minute, during daily walking?"
+relevant = ["yarnall2026"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.stride_time_cv"
+group = "metric"
+query = "What does the variability of stride time from one stride to the next indicate about fall risk and control of walking?"
+relevant = ["hausdorff2001", "shah2020", "deldin2019b"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.stride_time_sd_s"
+group = "metric"
+query = "What does the standard deviation of stride time mean for the stability of walking?"
+relevant = ["hausdorff2001"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.swing_time_cv"
+group = "metric"
+query = "What does the variability of swing time indicate about walking in neurological disease?"
+relevant = ["shah2020"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.stride_length_cv"
+group = "metric"
+query = "What does stride length variability indicate clinically?"
+relevant = ["shah2020"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.clearance_median_m"
+group = "metric"
+query = "What does foot clearance height during everyday walking indicate about the risk of falling?"
+relevant = ["schlachetzki2017", "ogata2022"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "metric:period.stance_ratio_median"
+group = "metric"
+query = "How is the percentage of the gait cycle spent in stance during daily walking changed in gait disorders?"
+relevant = ["schlachetzki2017"]
+how = "metric label and meaning; relevant = sources"
+
+[[query]]
+id = "known:arens2021"
+group = "known_item"
+query = "Can motion sensors built into a soft wearable assistive suit estimate outward leg swing, toe height above the ground and stride length in real time in stroke survivors?"
+relevant = ["arens2021"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:bachlin2010"
+group = "known_item"
+query = "Can a body-worn device detect moments when a Parkinson patient suddenly cannot move the feet forward and play a rhythmic sound to help them start walking again?"
+relevant = ["bachlin2010"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:begg2014"
+group = "known_item"
+query = "Does showing older adults live feedback on how high their toes pass over the ground during treadmill walking lower their chance of tripping?"
+relevant = ["begg2014"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:buekers2025"
+group = "known_item"
+query = "How many hours per day and how many days of wearable sensor recording are needed to reliably measure everyday walking in people with mobility problems?"
+relevant = ["buekers2025"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:castiglia2021"
+group = "known_item"
+query = "Which measures of the smoothness and regularity of trunk acceleration during walking can identify unstable gait and repeated falling in Parkinson's disease regardless of age and speed?"
+relevant = ["castiglia2021"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:coates2020"
+group = "known_item"
+query = "Is the regularity or predictability of stride timing during a week of everyday walking different in Parkinson's disease, and does it change over three years?"
+relevant = ["coates2020"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:deldin2016"
+group = "known_item"
+query = "How do the walking environment and the length of continuous walking periods affect whether gait features from a lower back sensor can tell Parkinson's patients from healthy older adults?"
+relevant = ["deldin2016"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:deldin2019a"
+group = "known_item"
+query = "Which features of everyday walking, such as the amount and pattern of walking periods and step characteristics, are linked to repeated falling in older people with and without Parkinson's disease?"
+relevant = ["deldin2019a"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:deldin2019b"
+group = "known_item"
+query = "Can gait measured with a wearable device in healthy older people predict who will later be diagnosed with Parkinson's disease, and how many years before diagnosis does walking change?"
+relevant = ["deldin2019b"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:demiguelfernandez2023"
+group = "known_item"
+query = "Can sensors worn on the lower leg measure step timing and foot height after stroke and be used to automatically adjust the support given by a powered knee brace?"
+relevant = ["demiguelfernandez2023"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:dias2023"
+group = "known_item"
+query = "Can measuring walking at home with gait sensors separate older people with fluid build-up in the brain from healthy elderly people and show who improves after drainage surgery?"
+relevant = ["dias2023"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:dodge2012"
+group = "known_item"
+query = "Can walking speed measured over many months by motion sensors on the ceiling at home tell older people with mild memory and thinking problems from those with normal cognition?"
+relevant = ["dodge2012"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:eckert2026"
+group = "known_item"
+query = "Which personal, health and environmental factors are related to how much, in what pattern and how fast community-dwelling older adults walk in everyday life?"
+relevant = ["eckert2026"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:ema2023"
+group = "known_item"
+query = "Can a high percentile of stride speed recorded at home replace the six-minute walk test as the main outcome in drug trials for a childhood muscle-wasting disease?"
+relevant = ["ema2023"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:ensink2024"
+group = "known_item"
+query = "Can an inertial sensor measure the angle of the foot at first ground contact and indicate how strongly the leg pushes the body forward in people after stroke?"
+relevant = ["ensink2024"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:hameau2026"
+group = "known_item"
+query = "What are normal values of lower-leg and knee rotation speed at different walking speeds, and can they detect sudden backward straightening of the knee during stance in people with one-sided paralysis?"
+relevant = ["hameau2026"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:hausdorff2001"
+group = "known_item"
+query = "Does greater stride-to-stride fluctuation in walking predict future falls over one year in older people living in the community?"
+relevant = ["hausdorff2001"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:ilg2020"
+group = "known_item"
+query = "Which measures of step variability and movement smoothness recorded by wearable sensors in the laboratory and in everyday life reflect walking problems in progressive disorders of movement coordination?"
+relevant = ["ilg2020"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:kirk2024"
+group = "known_item"
+query = "How accurate is walking speed estimated by a single lower back device in everyday life across several chronic conditions, and how does accuracy depend on how long each walk lasts?"
+relevant = ["kirk2024"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:kirk2025"
+group = "known_item"
+query = "What does a review of the literature show about the clinical usefulness of walking measures recorded with wearables in everyday life in Parkinson's disease?"
+relevant = ["kirk2025"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:kolakowski2020"
+group = "known_item"
+query = "How can an indoor radio positioning system that combines two short-range wireless technologies, with wireless clock synchronization of fixed nodes, track older people at home?"
+relevant = ["kolakowski2020"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:lanotte2024"
+group = "known_item"
+query = "Can an improved algorithm detect foot contact and foot lift events from two leg-worn sensors to estimate the timing of walking phases in stroke survivors?"
+relevant = ["lanotte2024"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:liu2022"
+group = "known_item"
+query = "Can a contactless wireless device placed in the home measure walking speed to track Parkinson's severity, progression and response to medication over a year?"
+relevant = ["liu2022"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:mancini2015"
+group = "known_item"
+query = "During a week of continuous monitoring, are the characteristics of changing walking direction in daily life different in Parkinson's disease compared with healthy people?"
+relevant = ["mancini2015"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:mancini2016"
+group = "known_item"
+query = "Is the quality of changing walking direction during daily activities in very old people associated with past and future falls and with cognitive function?"
+relevant = ["mancini2016"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:masiala2019"
+group = "known_item"
+query = "How well do recurrent deep networks with selected frequency and statistical features from accelerometers detect episodes of sudden motor blocks during walking in Parkinson's disease?"
+relevant = ["masiala2019"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:micoamigo2023"
+group = "known_item"
+query = "How accurate are algorithms that detect walking sequences, foot contacts, step rate and stride length from a single lower back device in real-world conditions across six patient groups?"
+relevant = ["micoamigo2023"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:moore2013"
+group = "known_item"
+query = "Which sensor positions on the lower body and which signal processing settings work best to automatically detect episodes when Parkinson patients' feet get stuck while walking?"
+relevant = ["moore2013"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:moore2017"
+group = "known_item"
+query = "Is a single low-cost accelerometer on the lower back valid and reliable for measuring walking characteristics after stroke in the laboratory and at home in the community?"
+relevant = ["moore2017"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:naitaicha2018"
+group = "known_item"
+query = "Do deep learning models trained on raw trunk acceleration from daily life predict falls in older adults better than hand-crafted biomechanical features?"
+relevant = ["naitaicha2018"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:neumann2026"
+group = "known_item"
+query = "Which sensor setups, validation methods and pooled gait values have studies reported for real-world walking assessment with wearables in Parkinson's disease and stroke?"
+relevant = ["neumann2026"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:oday2022"
+group = "known_item"
+query = "What number and placement of motion sensors give good detection of episodes when the feet feel stuck to the floor while still being acceptable to people with Parkinson's disease?"
+relevant = ["oday2022"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:ogata2022"
+group = "known_item"
+query = "How do forward and vertical displacements along the foot path, measured by sensors just above the ankles, differ between mild and advanced Parkinson's patients and healthy young and older people?"
+relevant = ["ogata2022"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:pardoel2019"
+group = "known_item"
+query = "What does a review of about seventy studies show about detecting and forecasting sudden episodes of inability to step forward using body-worn sensors in Parkinson's disease?"
+relevant = ["pardoel2019"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:patterson2010"
+group = "known_item"
+query = "Which equation for comparing the left and right sides in step length, swing time and stance time should become the standard way to express walking asymmetry after stroke?"
+relevant = ["patterson2010"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:phillips2017"
+group = "known_item"
+query = "Can changes in walking speed and stride length measured by depth cameras in apartments for independent living predict that a resident will fall within the next few weeks?"
+relevant = ["phillips2017"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:rehman2019"
+group = "known_item"
+query = "Which combination of walking characteristics from an instrumented walkway best separates early Parkinson's disease from healthy controls using machine learning feature selection?"
+relevant = ["rehman2019"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:rispens2015"
+group = "known_item"
+query = "Which characteristics of trunk acceleration during a week of everyday walking are reliable and associated with the number of falls that older adults reported?"
+relevant = ["rispens2015"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:salomon2024"
+group = "known_item"
+query = "What did a worldwide online algorithm competition achieve in detecting sudden inability to move the feet from wearable data, and what daily time patterns did it reveal?"
+relevant = ["salomon2024"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:schlachetzki2017"
+group = "known_item"
+query = "Can sensors attached to both shoes objectively measure stride length, stance time and toe clearance in a large group of Parkinson's patients compared with healthy controls?"
+relevant = ["schlachetzki2017"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:shah2020"
+group = "known_item"
+query = "Which measures of mobility collected continuously over a week of daily life best distinguish people with Parkinson's disease from healthy people?"
+relevant = ["shah2020"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:shah2021"
+group = "known_item"
+query = "Which gait measures from body-worn sensors best separate people with an inherited progressive coordination disorder, including those not yet showing symptoms, from healthy controls, and how do they relate to severity?"
+relevant = ["shah2021"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:shah2025"
+group = "known_item"
+query = "Do walking measures that separate people with an inherited coordination disorder from controls in a supervised clinic test also work during a week of unsupervised daily life?"
+relevant = ["shah2025"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:sieberts2021"
+group = "known_item"
+query = "How did an open crowd competition improve features from phone and wrist motion sensors for predicting Parkinson's disease and the severity of tremor and involuntary movements?"
+relevant = ["sieberts2021"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:suda2019"
+group = "known_item"
+query = "How does the severity of nerve damage caused by diabetes change the height and complexity of the toe path during the swing phase of walking?"
+relevant = ["suda2019"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:takayanagi2019"
+group = "known_item"
+query = "How strongly does walking speed measured by a waist accelerometer in daily life agree with walking speed measured on a pressure mat in the laboratory in healthy older adults?"
+relevant = ["takayanagi2019"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:uchitomi2023"
+group = "known_item"
+query = "Which ways of artificially enlarging the training data, such as rotating the signals, improve deep learning classification of early Parkinson's disease from a lower-leg sensor?"
+relevant = ["uchitomi2023"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:vanschooten2015"
+group = "known_item"
+query = "Do the amount of daily activity and the quality of walking measured with a trunk accelerometer over one week predict falls in the following six months in older adults?"
+relevant = ["vanschooten2015"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:vanschooten2016"
+group = "known_item"
+query = "Do qualities of daily-life walking such as stability, variability, smoothness and symmetry predict the time to the first and second falls in older people over a year?"
+relevant = ["vanschooten2016"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:wang2021"
+group = "known_item"
+query = "Can deep neural networks trained on inertial sensor data recognize abnormal walking after stroke and classify the type of abnormality?"
+relevant = ["wang2021"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:weiss2013"
+group = "known_item"
+query = "Can a few days of accelerometer recording at home quantify walking quality and identify older people at risk of falling?"
+relevant = ["weiss2013"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+
+[[query]]
+id = "known:yarnall2026"
+group = "known_item"
+query = "How do measures of everyday walking captured by a body-worn device compare between people with Parkinson's disease and controls across disease stages, and is long-term wearing feasible?"
+relevant = ["yarnall2026"]
+how = "opening passages (abstract) of the paper, rare title words and names paraphrased"
+

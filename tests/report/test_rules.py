@@ -98,7 +98,8 @@ def test_baseline_needs_seven_days_and_matches_side(catalog):
             value("period.stride_time_cv", 0.05, side="right", unit="ratio")]  # fmt: skip
     ctx = context(catalog, vals, left + right)
     assert "baseline" not in ctx["values"][0]
-    assert ctx["values"][1]["baseline"] == {"median": 0.04, "days": 7, "change": pytest.approx(0.01)}
+    assert ctx["values"][1]["baseline"] == {"median": 0.04, "days": 7, "change": pytest.approx(0.01),
+                                            "direction": "higher"}  # fmt: skip
 
 
 def test_no_baseline_for_a_null_value(catalog):
@@ -217,6 +218,88 @@ def test_render_substitutes_values_and_numbers_citations_in_first_use_order(cata
 def test_render_null_value(catalog):
     ctx = context(catalog, [value("period.speed_median_mps", None, reason="no_data")])
     assert rules.render("{v1}", ctx, {}, rules.Citations()) == "값 없음"
+
+
+# --- 평소와의 방향 (RP-7, RP-8) --------------------------------------------------------------
+
+
+def test_baseline_direction_uses_the_text_form():
+    assert rules.baseline_direction(1.2, 1.0, "m/s") == "higher"
+    assert rules.baseline_direction(0.9, 1.0, "m/s") == "lower"
+    assert rules.baseline_direction(1.0012, 1.0, "m/s") == "same"  # 둘 다 '1.00 m/s'
+    assert rules.baseline_direction(12.4, 12.0, "count") == "same"  # 둘 다 '12'
+
+
+def test_fill_directions_adds_direction_to_an_old_context(catalog):
+    ctx = dctx(catalog)
+    for v in ctx["values"]:
+        v["baseline"].pop("direction")
+    filled = rules.fill_directions(ctx)
+    assert [v["baseline"]["direction"] for v in filled["values"]] == ["lower", "higher", "lower", "same"]
+    assert "direction" not in ctx["values"][0]["baseline"]  # 원본은 그대로
+
+
+def dctx(catalog) -> dict:
+    """v1 걷기 속도 lower, v2 보폭 길이 higher, v3 가장 긴 걷기 lower, v4 걷기 횟수 same."""
+    rows = (daily("period.speed_median_mps", [1.2] * 8) + daily("period.stride_length_median_m", [1.1] * 8)
+            + daily("period.bout_duration_max_s", [300.0] * 8) + daily("period.bout_count", [12] * 8))  # fmt: skip
+    return context(catalog, [value("period.speed_median_mps", 1.0),
+                             value("period.stride_length_median_m", 1.3, unit="m"),
+                             value("period.bout_duration_max_s", 120.0, unit="s"),
+                             value("period.bout_count", 12, unit="count")], rows)  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "걷기 속도는 {v1}로 지난 30일보다 빨랐다.",
+        "걷기 속도가 {v1}로 평소보다 늘었습니다.",
+        "속도는 {v1}였고 평소보다 높아졌다.",
+        "보폭 길이는 {v2}로 지난 30일보다 줄었다.",
+        "보폭이 {v2}로 짧아졌다.",
+        "보폭 길이는 {v2}로 크게 줄었다.",  # '크게', '많이'는 정도이지 방향이 아님
+        "보폭 길이는 {v2}로 많이 줄었다.",
+        "가장 긴 걷기는 {v3}로 평소보다 길었다.",
+        "속도 {v1}와 가장 긴 걷기 {v3} 모두 지난 30일보다 증가했다.",
+    ],
+)
+def test_reversed_direction_is_a_problem(catalog, text):
+    problems = rules.check_text(text, dctx(catalog), {})
+    assert len(problems) == 1 and "방향" in problems[0]
+
+
+def test_direction_problem_names_value_direction_and_word(catalog):
+    [p] = rules.check_text("보폭 길이는 {v2}로 지난 30일보다 줄었습니다.", dctx(catalog), {})
+    assert "{v2}" in p and "higher" in p and "'줄었습니다'" in p
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "걷기 속도는 {v1}로 지난 30일보다 느렸다.",  # 맞는 방향
+        "보폭 길이는 {v2}로 평소보다 늘었다.",
+        "가장 긴 걷기는 {v3}로 평소보다 짧았다.",  # label의 '긴'은 안 봄
+        "가장 긴 걷기는 {v3}였다.",  # label 밖에 방향 낱말 없음
+        "속도 {v1}는 줄지 않았다.",  # 부정은 판단하지 않음
+        "보폭 길이 {v2}는 줄지는 않았다.",
+        "걷기 속도 {v1}는 문헌에서 보고된 값보다 높다 [p1].",  # 인용 문장은 문헌과의 비교일 수 있음
+        "속도 {v1}와 보폭 길이 {v2}는 지난 30일보다 늘었다.",  # 값의 방향이 섞임
+        "걷기 횟수는 {v4}회로 평소보다 많았다.",  # same은 이번에는 판단하지 않음
+        "속도는 {v1}로 줄었지만 한때 빨라지기도 했다.",  # 양쪽 낱말
+        "속도 {v1}는 평소와 큰 차이가 났다.",  # 차이의 크기
+        "보폭 길이 {v2}는 상대적으로 고른 편이었다.",  # '상대적'의 '적'은 낱말이 아님
+        "평소보다 많이 걸었다.",  # 값 번호 없음
+    ],
+)
+def test_direction_passes(catalog, text):
+    assert rules.check_text(text, dctx(catalog), {1: passage(1)}) == []
+
+
+def test_direction_check_runs_in_check_report(catalog):
+    text = GOOD.replace("걷기는 고르게 나뉘었다.", "가장 긴 걷기는 {v3}로 지난 30일보다 길었다.")
+    parts, _ = rules.parse_parts(text)
+    problems = rules.check_report(parts, dctx(catalog), {1: passage(1)})
+    assert len(problems) == 1 and problems[0].startswith("활동량: 평소와의 방향")
 
 
 # --- 보고서의 부분 (RP-8) -------------------------------------------------------------------

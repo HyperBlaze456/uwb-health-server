@@ -1,10 +1,11 @@
 """보고서와 대화의 순수 계산 (SPEC RP-4, RP-7, RP-8). DB·HTTP·모델 SDK를 모릅니다.
 
 - build_context: 기간의 지표 값과 자료 범위 → 모델에 넘기는 맥락 `uwbserver.report_input/1`(RP-7). 값마다 v1, v2, …
-- baseline_dates / baseline: 기간 앞 30일의 일별 값과 견주기(RP-4).
+- baseline_dates / baseline: 기간 앞 30일의 일별 값과 견주기(RP-4). baseline_direction: 그 방향(RP-7),
+  fill_directions: 방향이 없는 예전 맥락에 방향을 채움.
 - format_value: 값을 글에 넣는 꼴. 규칙은 아래 "값의 글 꼴" 한 곳.
 - check_text: 자리 표시({vN}, [pN])가 맥락과 이 대화의 찾은 대목을 가리키는지, 자리 표시 밖에 측정값을 숫자로 쓰지
-  않았는지(RP-8 서버의 검사).
+  않았는지, 평소와의 차이를 baseline.direction과 반대로 쓰지 않았는지(direction_problems)(RP-8 서버의 검사).
 - render / Citations / references: 자리 표시를 값과 인용 번호로 바꾸고 문헌 목록을 만듦.
 - parse_parts / check_report / assemble_report: 모델이 쓴 네 부분을 읽고 검사해 여덟 부분의 Markdown으로 엮음(RP-8 표).
 """
@@ -84,7 +85,27 @@ def baseline(v: Value, rows: Iterable[Mapping]) -> dict | None:
     if len(xs) < BASELINE_MIN_DAYS:
         return None
     median = statistics.median(xs)
-    return {"median": median, "days": len(xs), "change": v.value - median}
+    return {"median": median, "days": len(xs), "change": v.value - median,
+            "direction": baseline_direction(v.value, median, v.unit)}  # fmt: skip
+
+
+def baseline_direction(value: float, median: float, unit: str) -> str:
+    """RP-7: 값이 지난 30일 중앙값보다 'higher' | 'lower' | 'same'. 두 수를 글 꼴(format_value)로 바꾸어 같은 글이면
+    same(보고서에서 차이가 보이지 않는 크기), 아니면 차이의 부호."""
+    if format_value(value, unit) == format_value(median, unit):
+        return "same"
+    return "higher" if value > median else "lower"
+
+
+def fill_directions(context: Mapping) -> dict:
+    """baseline.direction이 없는 예전 맥락에 baseline_direction으로 채운 사본. 이미 있는 direction은 그대로."""
+    values = []
+    for v in context["values"]:
+        b = v.get("baseline")
+        if b is not None and "direction" not in b and v.get("value") is not None:
+            v = {**v, "baseline": {**b, "direction": baseline_direction(v["value"], b["median"], v["unit"])}}
+        values.append(v)
+    return {**context, "values": values}
 
 
 def build_context(
@@ -257,6 +278,83 @@ def measured_numbers(text: str, context: Mapping) -> list[str]:
     return out
 
 
+# 평소와의 방향 낱말(direction_problems). 어간으로 맞추고, 왼쪽에 다른 한글이 붙은 것('상대적', '동작')은 뺌.
+# 한 글자 어간은 뒤에 오는 활용 어미까지 적어, 같은 글자로 시작하는 명사('높이', '길이', '낮 시간')와 정도 부사('많이',
+# '크게')는 맞지 않게 함.
+_H = r"(?<![가-힣])"
+_UP_WORDS = re.compile("|".join([
+    _H + r"늘(?:었|어|고|며|다|기|린|려)", r"증가", r"상승", r"웃돌",
+    _H + r"높(?:았|아|은|고|게|다|며|기)",
+    _H + r"길(?:었|어|고|게|다|며|기)", _H + r"긴(?![가-힣])",
+    _H + r"(?:빠르|빠른|빨랐|빨라)",
+    _H + r"많(?:았|아|은|고|다|며|기)",
+    _H + r"(?:컸|커졌|커진|커지|큰(?![가-힣])|크다|크고|크며)",
+]))  # fmt: skip
+_DOWN_WORDS = re.compile("|".join([
+    _H + r"줄(?:었|어|고|며|다|기|인|여)", r"감소", r"하락", r"밑돌",
+    _H + r"낮(?:았|아|은|고|게|다|며|기)",
+    _H + r"짧(?:았|아|은|고|게|다|며|기)",
+    _H + r"(?:느리|느린|느려|느렸)",
+    _H + r"적(?:었|어(?!도)|은|고|다|게|으며)",
+    _H + r"작(?:았|아|은|고|다|게|으며)",
+]))  # fmt: skip
+_NEUTRAL = re.compile(_H + r"(?:큰|작은)\s*(?:차이|변화|폭)")  # 차이의 크기이지 방향이 아님
+_NEGATION = re.compile(r"않|못|아니|없")
+_DIRECTION_TEXT = {"higher": "지난 30일보다 큼", "lower": "지난 30일보다 작음"}
+
+
+def _eojeol(s: str, m: re.Match) -> str:
+    """맞은 자리를 품은 어절(빈칸 사이)에서 문장 부호를 뺀 것. 문제 줄에 보일 낱말."""
+    start = s.rfind(" ", 0, m.start()) + 1
+    end = s.find(" ", m.end())
+    return s[start : end if end != -1 else len(s)].strip(".,!?·()[]{}\"'")
+
+
+def direction_problems(text: str, context: Mapping) -> list[str]:
+    """RP-8: 평소와의 차이를 맥락의 baseline.direction과 반대 방향의 말로 쓴 문장. 문제 문장마다 한 줄.
+
+    규칙(잘못 잡는 것을 줄이는 쪽):
+    - 대상 문장: {vN}이 있고, 그 값이 모두 맥락에 있고 모두 baseline.direction이 있으며, 인용 [pN]이 없는 문장.
+      인용한 문장은 문헌과의 비교일 수 있어 뺌.
+    - 자리 표시와 지표 label을 지운 뒤(measured_numbers와 같게, '가장 긴 걷기'의 '긴'을 안 봄) 방향 낱말을 찾음.
+      값이 커짐: _UP_WORDS(늘다, 증가, 상승, 웃돌다, 높다, 길다, 빠르다, 많다, 크다). 값이 작아짐: _DOWN_WORDS(줄다,
+      감소, 하락, 밑돌다, 낮다, 짧다, 느리다, 적다, 작다). '큰 차이', '작은 변화'처럼 차이의 크기를 말하는 것은 뺌.
+    - 문제로 내는 때: 문장의 값이 모두 higher(또는 모두 lower)이고, 문장에 반대 방향의 낱말만 있음.
+      값의 방향이 섞였거나 same이 있으면, 양쪽 낱말이 함께 있으면, 부정(않, 못, 아니, 없)이 있으면 판단하지 않음.
+    알려진 빈틈: 부정이 든 문장은 모두 넘김('늘지 않았다'가 맞는지 보지 않음). 값 번호 없이 쓴 비교('평소보다 덜
+    걸었다')는 못 잡음. 목록에 없는 낱말('덜', '나아졌다', '좋아졌다', '향상')은 못 봄. direction이 same인 값을
+    '늘었다'고 쓴 것은 잡지 않음. 지난 30일이 아닌 것과 견준 말('빠른 편이다')도 방향 낱말로 보므로, 그런 문장이
+    값의 방향과 반대면 잡음.
+    """
+    known = values_by_number(context)
+    labels = sorted({v.get("label", "") for v in context["values"]} - {""}, key=len, reverse=True)
+    out = []
+    for sentence in _SENTENCE_END.split(text):
+        numbers = list(dict.fromkeys(int(x) for x in V_RE.findall(sentence)))
+        if not numbers or P_RE.search(sentence):
+            continue
+        dirs = {(known.get(n) or {}).get("baseline", {}).get("direction") for n in numbers}
+        if len(dirs) != 1 or (direction := dirs.pop()) not in _DIRECTION_TEXT:
+            continue
+        s = V_RE.sub(" ", sentence)
+        for label in labels:
+            s = s.replace(label, " ")
+        s = _NEUTRAL.sub(" ", s)
+        if _NEGATION.search(s):
+            continue
+        up, down = list(_UP_WORDS.finditer(s)), list(_DOWN_WORDS.finditer(s))
+        if up and down:
+            continue
+        wrong = down if direction == "higher" else up
+        if not wrong:
+            continue
+        ids = ", ".join(f"{{v{n}}}" for n in numbers)
+        words = ", ".join(dict.fromkeys(f"'{_eojeol(s, m)}'" for m in wrong))
+        out.append(f"평소와의 방향이 맥락과 반대: {ids}은 {_DIRECTION_TEXT[direction]}(baseline.direction = "
+                   f"{direction})인데 글에 {words}. 문장: \"{sentence.strip()}\"")  # fmt: skip
+    return out
+
+
 def check_text(text: str, context: Mapping, passages: Mapping[int, PassageRef]) -> list[str]:
     """RP-8 서버의 검사(글 하나). 어긴 것마다 한 줄, 없으면 빈 목록.
     passages: 이 대화에서 지금까지 돌려준 대목(번호 → 대목)."""
@@ -270,6 +368,7 @@ def check_text(text: str, context: Mapping, passages: Mapping[int, PassageRef]) 
             problems.append(f"이 대화에서 search_papers가 돌려주지 않은 대목 [p{n}]")
     for found in measured_numbers(text, context):
         problems.append(f"측정값을 숫자로 직접 씀: '{found}'. 자리 표시 {{vN}}를 써야 함")
+    problems += direction_problems(text, context)
     return problems
 
 

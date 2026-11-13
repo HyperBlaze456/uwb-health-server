@@ -1,0 +1,630 @@
+{
+ "schema": "uwbserver.report_input/1",
+ "catalog_version": 1,
+ "subject": {
+  "code": "S-DEMO",
+  "height_m": 1.68,
+  "leg_length_m": 0.86,
+  "paretic_side": null
+ },
+ "period": {
+  "from_at": "2026-11-06T00:00:00+09:00",
+  "to_at": "2026-11-07T00:00:00+09:00"
+ },
+ "baseline_comparable": true,
+ "coverage": {
+  "wear_time_s": 3300.0,
+  "walking_time_s": 288.0,
+  "bout_count": 6,
+  "feet": [
+   "left"
+  ],
+  "sensor_position": "lateral_ankle",
+  "fused_ratio": 1.0,
+  "partial_runs": 0,
+  "ambiguous_bouts": 0,
+  "runs_not_unpacked": 0
+ },
+ "values": [
+  {
+   "id": "v1",
+   "metric": "period.wear_time_s",
+   "side": null,
+   "value": 3300.0,
+   "unit": "s",
+   "n": 1,
+   "sufficient": true,
+   "trust": "fact",
+   "where": {},
+   "label": "자료가 있던 시간",
+   "meaning": "기간 안에서 그 착용자의 센서 자료가 있던 시간의 합(기간과 겹치는 구간 길이의 합, 기간 안쪽만)",
+   "show": "basic",
+   "sources": [
+    "buekers2025"
+   ],
+   "baseline": {
+    "median": 3300.0,
+    "days": 26,
+    "change": 0.0,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v2",
+   "metric": "period.fused_ratio",
+   "side": null,
+   "value": 1.0,
+   "unit": "ratio",
+   "n": 6,
+   "sufficient": true,
+   "trust": "fact",
+   "where": {
+    "mode": "fused"
+   },
+   "label": "UWB 융합 비율",
+   "meaning": "걷기 시간 가운데 UWB 거리와 IMU를 함께 써서(융합) 계산한 걷기 구간이 차지하는 비율",
+   "show": "detail",
+   "sources": [],
+   "baseline": {
+    "median": 1.0,
+    "days": 26,
+    "change": 0.0,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v3",
+   "metric": "period.walking_time_s",
+   "side": null,
+   "value": 288.0,
+   "unit": "s",
+   "n": 6,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {},
+   "label": "걷기 시간",
+   "meaning": "기간에 시작한 걷기 구간들의 길이의 합",
+   "show": "basic",
+   "sources": [
+    "yarnall2026"
+   ],
+   "baseline": {
+    "median": 288.0,
+    "days": 26,
+    "change": 0.0,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v4",
+   "metric": "period.bout_count",
+   "side": null,
+   "value": 6,
+   "unit": "count",
+   "n": 6,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {},
+   "label": "걷기 횟수",
+   "meaning": "기간에 시작한 걷기 구간의 수. 걷기 구간은 멈춤이 3초보다 짧게 이어진 걸음들 가운데 한 발이 4보폭 이상인 것",
+   "show": "basic",
+   "sources": [
+    "yarnall2026",
+    "deldin2019a"
+   ],
+   "baseline": {
+    "median": 6.0,
+    "days": 26,
+    "change": 0.0,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v5",
+   "metric": "period.bout_duration_max_s",
+   "side": null,
+   "value": 130.0,
+   "unit": "s",
+   "n": 6,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {},
+   "label": "가장 긴 걷기",
+   "meaning": "기간에 시작한 걷기 구간 가운데 가장 긴 것의 길이",
+   "show": "basic",
+   "sources": [
+    "deldin2019a"
+   ],
+   "baseline": {
+    "median": 130.0,
+    "days": 26,
+    "change": 0.0,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v6",
+   "metric": "period.stride_count",
+   "side": "left",
+   "value": 256,
+   "unit": "count",
+   "n": 256,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 10
+   },
+   "label": "보폭 수",
+   "meaning": "길이 10초 이상인 걷기 구간에서 그 발이 낸 보폭의 수",
+   "show": "detail",
+   "sources": [
+    "yarnall2026"
+   ],
+   "baseline": {
+    "median": 256.0,
+    "days": 26,
+    "change": 0.0,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v7",
+   "metric": "period.distance_m",
+   "side": null,
+   "value": 317.6932,
+   "unit": "m",
+   "n": 256,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 10
+   },
+   "label": "걸은 거리",
+   "meaning": "길이 10초 이상인 걷기 구간마다 주 발의 보폭 길이를 더한 거리",
+   "show": "detail",
+   "sources": [],
+   "baseline": {
+    "median": 317.27715,
+    "days": 26,
+    "change": 0.41604999999998427,
+    "direction": "higher"
+   }
+  },
+  {
+   "id": "v8",
+   "metric": "period.bout_duration_median_s",
+   "side": null,
+   "value": 32.5,
+   "unit": "s",
+   "n": 6,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {},
+   "label": "걷기 길이(중앙값)",
+   "meaning": "기간에 시작한 걷기 구간들의 길이의 중앙값",
+   "show": "detail",
+   "sources": [
+    "deldin2019a",
+    "yarnall2026"
+   ],
+   "baseline": {
+    "median": 32.5,
+    "days": 26,
+    "change": 0.0,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v9",
+   "metric": "period.bout_duration_p90_s",
+   "side": null,
+   "value": 100.0,
+   "unit": "s",
+   "n": 6,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {},
+   "label": "걷기 길이(90백분위)",
+   "meaning": "기간에 시작한 걷기 구간들의 길이의 90백분위",
+   "show": "detail",
+   "sources": [
+    "deldin2019a",
+    "yarnall2026"
+   ],
+   "baseline": {
+    "median": 100.0,
+    "days": 26,
+    "change": 0.0,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v10",
+   "metric": "period.walking_share_over_60s",
+   "side": null,
+   "value": 0.6944444444444444,
+   "unit": "ratio",
+   "n": 6,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 60
+   },
+   "label": "60초 이상 걷기의 비율",
+   "meaning": "걷기 시간 가운데 길이 60초 이상인 걷기 구간이 차지하는 비율",
+   "show": "detail",
+   "sources": [
+    "deldin2019a"
+   ],
+   "baseline": {
+    "median": 0.6944444444444444,
+    "days": 26,
+    "change": 0.0,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v11",
+   "metric": "period.speed_median_mps",
+   "side": null,
+   "value": 1.1531,
+   "unit": "m/s",
+   "n": 256,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 10
+   },
+   "label": "걷기 속도",
+   "meaning": "길이 10초 이상인 걷기 구간에서 주 발의 보폭 속도들의 중앙값",
+   "show": "basic",
+   "sources": [
+    "schlachetzki2017",
+    "yarnall2026",
+    "takayanagi2019"
+   ],
+   "baseline": {
+    "median": 1.1486,
+    "days": 26,
+    "change": 0.0044999999999999485,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v12",
+   "metric": "period.speed_p95_mps",
+   "side": null,
+   "value": 1.20855,
+   "unit": "m/s",
+   "n": 256,
+   "sufficient": true,
+   "trust": "validated",
+   "where": {
+    "bout_min_s": 10
+   },
+   "label": "빠른 걷기 속도(95백분위)",
+   "meaning": "길이 10초 이상인 걷기 구간에서 주 발의 보폭 속도들의 95백분위",
+   "show": "detail",
+   "sources": [
+    "ema2023"
+   ],
+   "baseline": {
+    "median": 1.2069874999999999,
+    "days": 26,
+    "change": 0.0015625000000001332,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v13",
+   "metric": "period.speed_10_30s_median_mps",
+   "side": null,
+   "value": 1.1342,
+   "unit": "m/s",
+   "n": 31,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 10,
+    "bout_max_s": 30
+   },
+   "label": "걷기 속도(10–30초 걷기)",
+   "meaning": "길이 10초 이상 30초 미만인 걷기 구간에서 주 발의 보폭 속도들의 중앙값",
+   "show": "detail",
+   "sources": [
+    "deldin2016",
+    "yarnall2026"
+   ],
+   "baseline": {
+    "median": 1.1465,
+    "days": 26,
+    "change": -0.012299999999999978,
+    "direction": "lower"
+   }
+  },
+  {
+   "id": "v14",
+   "metric": "period.speed_30_60s_median_mps",
+   "side": null,
+   "value": 1.1553,
+   "unit": "m/s",
+   "n": 41,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 30,
+    "bout_max_s": 60
+   },
+   "label": "걷기 속도(30–60초 걷기)",
+   "meaning": "길이 30초 이상 60초 미만인 걷기 구간에서 주 발의 보폭 속도들의 중앙값",
+   "show": "detail",
+   "sources": [
+    "deldin2016",
+    "yarnall2026",
+    "eckert2026"
+   ],
+   "baseline": {
+    "median": 1.1481,
+    "days": 26,
+    "change": 0.007200000000000095,
+    "direction": "higher"
+   }
+  },
+  {
+   "id": "v15",
+   "metric": "period.speed_over_60s_median_mps",
+   "side": null,
+   "value": 1.1557499999999998,
+   "unit": "m/s",
+   "n": 184,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 60
+   },
+   "label": "걷기 속도(60초 이상 걷기)",
+   "meaning": "길이 60초 이상인 걷기 구간에서 주 발의 보폭 속도들의 중앙값",
+   "show": "detail",
+   "sources": [
+    "deldin2016",
+    "yarnall2026"
+   ],
+   "baseline": {
+    "median": 1.1485750000000001,
+    "days": 26,
+    "change": 0.007174999999999709,
+    "direction": "higher"
+   }
+  },
+  {
+   "id": "v16",
+   "metric": "period.stride_length_median_m",
+   "side": "left",
+   "value": 1.23975,
+   "unit": "m",
+   "n": 256,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 10
+   },
+   "label": "보폭 길이",
+   "meaning": "길이 10초 이상인 걷기 구간에서 그 발의 보폭 길이들의 중앙값",
+   "show": "basic",
+   "sources": [
+    "schlachetzki2017",
+    "dias2023"
+   ],
+   "baseline": {
+    "median": 1.240075,
+    "days": 26,
+    "change": -0.00032500000000013074,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v17",
+   "metric": "period.cadence_median_spm",
+   "side": null,
+   "value": 111.28628492261252,
+   "unit": "steps/min",
+   "n": 256,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 10
+   },
+   "label": "분당 걸음 수",
+   "meaning": "길이 10초 이상인 걷기 구간에서 주 발의 보폭마다 120 ÷ 보폭 시간(분당 걸음 수)을 내고 그 중앙값",
+   "show": "detail",
+   "sources": [
+    "yarnall2026"
+   ],
+   "baseline": {
+    "median": 111.14455756873718,
+    "days": 26,
+    "change": 0.1417273538753392,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v18",
+   "metric": "period.stride_time_median_s",
+   "side": "left",
+   "value": 1.0783,
+   "unit": "s",
+   "n": 256,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 10
+   },
+   "label": "보폭 시간",
+   "meaning": "길이 10초 이상인 걷기 구간에서 그 발의 보폭 시간들의 중앙값",
+   "show": "detail",
+   "sources": [],
+   "baseline": {
+    "median": 1.079675,
+    "days": 26,
+    "change": -0.001374999999999904,
+    "direction": "same"
+   }
+  },
+  {
+   "id": "v19",
+   "metric": "period.stride_time_cv",
+   "side": "left",
+   "value": 0.017190135221930296,
+   "unit": "ratio",
+   "n": 3,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 30
+   },
+   "label": "보폭 시간 변동",
+   "meaning": "길이 30초 이상인 걷기 구간마다 그 발의 보폭 시간의 변동 계수(표준편차 ÷ 평균)를 내고, 그 값들의 중앙값",
+   "show": "basic",
+   "sources": [
+    "hausdorff2001",
+    "shah2020",
+    "deldin2019b"
+   ],
+   "baseline": {
+    "median": 0.01850105052422512,
+    "days": 26,
+    "change": -0.001310915302294824,
+    "direction": "lower"
+   }
+  },
+  {
+   "id": "v20",
+   "metric": "period.stride_time_sd_s",
+   "side": "left",
+   "value": 0.018539947614894314,
+   "unit": "s",
+   "n": 3,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 30
+   },
+   "label": "보폭 시간 표준편차",
+   "meaning": "길이 30초 이상인 걷기 구간마다 그 발의 보폭 시간의 표준편차를 내고, 그 값들의 중앙값",
+   "show": "detail",
+   "sources": [
+    "hausdorff2001"
+   ],
+   "baseline": {
+    "median": 0.01995739531848175,
+    "days": 26,
+    "change": -0.001417447703587437,
+    "direction": "lower"
+   }
+  },
+  {
+   "id": "v21",
+   "metric": "period.swing_time_cv",
+   "side": "left",
+   "value": 0.017187659137439568,
+   "unit": "ratio",
+   "n": 3,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 30
+   },
+   "label": "발이 뜬 시간 변동",
+   "meaning": "길이 30초 이상인 걷기 구간마다 그 발의 발이 뜬 시간의 변동 계수(표준편차 ÷ 평균)를 내고, 그 값들의 중앙값",
+   "show": "detail",
+   "sources": [
+    "shah2020"
+   ],
+   "baseline": {
+    "median": 0.01850288399641175,
+    "days": 26,
+    "change": -0.0013152248589721818,
+    "direction": "lower"
+   }
+  },
+  {
+   "id": "v22",
+   "metric": "period.stride_length_cv",
+   "side": "left",
+   "value": 0.024233889876422707,
+   "unit": "ratio",
+   "n": 3,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 30
+   },
+   "label": "보폭 길이 변동",
+   "meaning": "길이 30초 이상인 걷기 구간마다 그 발의 보폭 길이의 변동 계수(표준편차 ÷ 평균)를 내고, 그 값들의 중앙값",
+   "show": "detail",
+   "sources": [
+    "shah2020"
+   ],
+   "baseline": {
+    "median": 0.024727535722557488,
+    "days": 26,
+    "change": -0.0004936458461347812,
+    "direction": "lower"
+   }
+  },
+  {
+   "id": "v23",
+   "metric": "period.clearance_median_m",
+   "side": "left",
+   "value": 0.07064999999999999,
+   "unit": "m",
+   "n": 256,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 10
+   },
+   "label": "발 들림 높이",
+   "meaning": "길이 10초 이상인 걷기 구간에서 그 발의 발 들림 높이들의 중앙값",
+   "show": "detail",
+   "sources": [
+    "schlachetzki2017",
+    "ogata2022"
+   ],
+   "baseline": {
+    "median": 0.070025,
+    "days": 26,
+    "change": 0.0006249999999999867,
+    "direction": "higher"
+   }
+  },
+  {
+   "id": "v24",
+   "metric": "period.stance_ratio_median",
+   "side": "left",
+   "value": 0.62,
+   "unit": "ratio",
+   "n": 256,
+   "sufficient": true,
+   "trust": "unverified",
+   "where": {
+    "bout_min_s": 10
+   },
+   "label": "발이 닿은 비율",
+   "meaning": "길이 10초 이상인 걷기 구간에서 그 발의 발이 닿은 비율들의 중앙값",
+   "show": "detail",
+   "sources": [
+    "schlachetzki2017"
+   ],
+   "baseline": {
+    "median": 0.62,
+    "days": 26,
+    "change": 0.0,
+    "direction": "same"
+   }
+  }
+ ],
+ "runs": [
+  27
+ ]
+}

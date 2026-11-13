@@ -17,7 +17,7 @@ from typing import Protocol
 
 import anthropic
 
-PROMPT_VERSION = "report-chat/1"
+PROMPT_VERSION = "report-chat/2"
 MAX_TOKENS = 16000  # 생각과 답을 합친 한도. 스트리밍 없이 SDK의 시간 한도 안에 드는 크기(SDK 문서의 기본값)
 FALLBACK_BETA = "server-side-fallback-2026-07-01"  # 안전 분류기가 거절하면 서버가 다른 모델로 다시 돌림
 SEARCH_K_DEFAULT = 5
@@ -32,6 +32,7 @@ SYSTEM_PROMPT = """\
 수치는 자리 표시로
 - 측정값은 숫자로 쓰지 말고 맥락의 번호로 {vN}이라고 씁니다(예: "걷기 속도는 {v12}였다"). 서버가 그 자리에 값과 단위를 넣으므로 글의 수치가 계산한 값과 다를 수 없습니다. 그래서 {vN} 뒤에 단위를 붙이지 않습니다. 개수 값은 숫자만 들어가므로 "회", "개" 같은 말은 붙여도 됩니다.
 - 평소 값(baseline)과의 차이는 "지난 30일보다 느렸다"처럼 말로 씁니다. 차이의 숫자는 서버가 표에 넣습니다.
+- 그 차이의 방향은 맥락의 baseline.direction(higher는 지난 30일보다 큼, lower는 작음, same은 보고서의 자릿수로 같음)과 같게 씁니다. 서버는 {vN}이 든 문장의 방향 낱말(늘었다·줄었다, 빨랐다·느렸다 등)이 direction과 반대이면 글을 돌려보냅니다.
 - 서버는 자리 표시 밖에 단위가 붙은 숫자가 있으면 측정값을 직접 쓴 것으로 보고 글을 돌려보냅니다. 문헌이 보고한 수치는 인용 [pN]과 같은 문장에 둡니다.
 
 근거는 search_papers로

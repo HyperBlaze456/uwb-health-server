@@ -15,6 +15,9 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pytest==9.2.0", "import-linter==2.15"]
+# 선택 사항: 논문 찾기의 뜻을 아는 벡터 함수(papers.FastEmbedEmbedder). 서버 이미지에는 들어가지 않음.
+# 쓰는 법: uv run --group embed python tools/eval_retrieval.py ...
+embed = ["fastembed==0.9.1"]
 
 [build-system]
 requires = ["hatchling"]
